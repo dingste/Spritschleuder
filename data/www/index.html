@@ -7,27 +7,82 @@
 :root{color-scheme:dark;--orange:#ff9e00;--black:#000;--panel:#212121;--dark:#101010;--muted:#848484;--white:#fff}
 *{box-sizing:border-box}body{margin:0;background:var(--black);color:var(--white);font:600 16px/1.45 "Courier New",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.06em}
 header{height:54px;background:var(--orange);color:var(--black);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;letter-spacing:.12em;border-bottom:3px solid #6b4300}
-main{width:min(100%,620px);margin:auto;padding:20px 16px 32px}.label{font-size:12px;color:var(--muted);margin:2px 0 10px}.recipes{display:grid;gap:9px}.recipe{width:100%;min-height:56px;text-align:left;background:var(--panel);color:var(--white);border:1px solid #343434;border-radius:5px;padding:14px 16px;font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer}.recipe.selected{background:#332300;border:2px solid var(--orange);color:var(--orange)}
+main{width:min(100%,620px);margin:auto;padding:20px 16px 32px}.recipes{display:grid;gap:9px}.recipe{width:100%;min-height:56px;text-align:left;background:var(--panel);color:var(--white);border:1px solid #343434;border-radius:5px;padding:14px 16px;font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer}.recipe.selected{background:#332300;border:2px solid var(--orange);color:var(--orange)}
 .sizes{display:flex;gap:8px;margin:18px 0}.size{flex:1;background:var(--panel);color:var(--white);border:1px solid #343434;border-radius:4px;padding:12px 4px;font:inherit;cursor:pointer}.size.selected{background:var(--orange);border-color:var(--orange);color:var(--black)}
-.start{width:100%;background:var(--orange);color:var(--black);border:0;border-radius:4px;padding:15px;font-family:inherit;font-size:17px;font-weight:900;letter-spacing:.1em;text-transform:inherit;cursor:pointer}.start:disabled{opacity:.35;cursor:default}.progress{margin-top:20px;background:var(--panel);padding:16px;border-radius:4px}.progress-head{display:flex;justify-content:space-between;gap:8px;font-size:13px}.track{height:17px;background:var(--dark);margin-top:13px;padding:3px}.bar{height:100%;width:0;background:var(--orange);transition:width .35s linear}.status{font-size:12px;color:var(--muted);margin-top:10px;min-height:18px}
+.start{width:100%;background:var(--orange);color:var(--black);border:0;border-radius:4px;padding:15px;font-family:inherit;font-size:17px;font-weight:900;letter-spacing:.1em;text-transform:inherit;cursor:pointer}.start:disabled{opacity:.35;cursor:default}.progress{margin-top:20px;background:var(--panel);padding:16px;border-radius:4px}.status{font-size:12px;color:var(--muted);margin-top:10px;min-height:18px}
 footer{text-align:center;margin:16px}.link{background:none;color:var(--muted);border:0;padding:10px;font:inherit;font-size:11px;cursor:pointer;text-decoration:underline;text-underline-offset:4px}.settings{display:none;background:var(--panel);padding:18px;margin-top:14px;border-radius:4px}.settings.open{display:block}.settings h2{font-size:14px;color:var(--orange);margin:0 0 14px}.settings label{display:block;font-size:11px;color:var(--muted);margin:12px 0 5px}.settings input{width:100%;padding:12px;background:var(--dark);border:1px solid #444;border-radius:3px;color:var(--white);font:inherit;text-transform:none}.csv-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}.csv-actions .action{margin:0;text-align:center;text-decoration:none;padding:12px 5px}.action{background:var(--orange);color:var(--black);border:0;padding:12px;width:100%;margin-top:9px;font:inherit;font-size:12px;cursor:pointer}.setup{display:none;border-top:1px solid #444;margin-top:18px;padding-top:16px}.setup.open{display:block}.notice{font-size:11px;color:var(--muted);margin:10px 0}.hidden{display:none!important}
+
+/* Zurückhaltendes Feedback, ohne das bestehende Design zu verändern */
+.recipe,.size,.start{transition:background-color .16s ease,border-color .16s ease,color .16s ease,transform .16s ease}
+.recipe:active,.size:active,.start:active:not(:disabled){transform:scale(.985)}
+.recipe.picked,.size.picked{animation:select-tap .23s ease-out}
+@keyframes select-tap{0%{transform:scale(.985)}60%{transform:scale(1.012)}100%{transform:scale(1)}}
+.start.starting{animation:start-tap .32s ease-out}
+@keyframes start-tap{50%{transform:scale(.985)}}
+.progress{position:relative;overflow:hidden}
+.glass-wrap{height:174px;display:flex;align-items:center;justify-content:center}
+.cocktail-glass{width:140px;height:162px;overflow:visible}
+.glass-outline{fill:none;stroke:#858585;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.glass-rim{stroke:#aaa;stroke-width:2;stroke-linecap:round}
+.liquid-fill{fill:var(--orange);opacity:.88}
+.liquid-wave{fill:var(--orange)}
+.wave-motion{animation:wave-drift 2.8s ease-in-out infinite alternate}
+@keyframes wave-drift{from{transform:translateX(-10px)}to{transform:translateX(10px)}}
+.cheers{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(33,33,33,.94);color:var(--orange);font-size:clamp(38px,9vw,58px);font-weight:900;letter-spacing:.12em;opacity:0;visibility:hidden;z-index:2}
+.cheers.show{visibility:visible;animation:cheers-in 2.7s ease both}
+@keyframes cheers-in{0%{opacity:0;transform:scale(.97)}14%,76%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.015)}}
+@media(prefers-reduced-motion:reduce){.recipe,.size,.start{transition:none}.recipe.picked,.size.picked,.start.starting,.wave-motion,.cheers.show{animation:none}.cheers.show{opacity:1}}
 </style></head><body>
 <header>SPRITSCHLEUDER</header><main>
-<div class="label">MIXTUR AUSWÄHLEN</div><div id="recipes" class="recipes"></div>
-<div class="label" style="margin-top:18px">MENGE</div><div class="sizes" id="sizes"><button class="size" data-ml="40">40 ML</button><button class="size selected" data-ml="200">200 ML</button><button class="size" data-ml="400">400 ML</button></div>
+<div id="recipes" class="recipes"></div>
+<div class="sizes" id="sizes"><button class="size" data-ml="40">40 ML</button><button class="size selected" data-ml="200">200 ML</button><button class="size" data-ml="400">400 ML</button></div>
 <button id="start" class="start" disabled>MIXEN</button>
-<section class="progress"><div class="progress-head"><span id="progressName">BEREIT</span><span id="progressPct">0 %</span></div><div class="track"><div id="progressBar" class="bar"></div></div><div id="message" class="status">MIXTUR WÄHLEN</div></section>
+<section class="progress"><div class="glass-wrap" aria-label="Füllstand des Mixvorgangs"><svg class="cocktail-glass" viewBox="0 0 160 180" role="img" aria-label="Glas, das sich beim Mixen füllt">
+<defs><clipPath id="glass-clip"><path d="M27 20 H133 L119 159 H41 Z"/></clipPath></defs>
+<g clip-path="url(#glass-clip)"><g id="liquidLevel" transform="translate(0 160)">
+<rect class="liquid-fill" x="0" y="5" width="160" height="180"/>
+<g class="wave-motion"><path class="liquid-wave" d="M-30 5 Q-10 -1 10 5 T50 5 T90 5 T130 5 T170 5 T210 5 V15 H-30 Z"/></g>
+</g></g>
+<path class="glass-outline" d="M25 17 L39 162 Q40 165 44 165 H116 Q120 165 121 162 L135 17"/><path class="glass-rim" d="M22 17 H138"/>
+</svg></div>
+<div id="message" class="status"></div><div id="cheers" class="cheers" aria-live="polite">CHEERS</div></section>
 <footer><button id="settingsToggle" class="link">EINSTELLUNGEN</button></footer>
 <section id="settings" class="settings"><h2>ANPASSEN</h2><label for="seconds">PUMPENLAUFZEIT FÜR 2 ML (SEKUNDEN)</label><input id="seconds" type="number" min="0.1" max="120" step="0.1"><button id="saveCalibration" class="action">FAKTOR SPEICHERN</button><div id="calibrationMessage" class="notice"></div><div class="csv-actions"><a class="action" href="/api/recipes.csv" download="mixturen.csv">CSV EXPORTIEREN</a><button id="importCsv" type="button" class="action">CSV IMPORTIEREN</button><input id="csvFile" class="hidden" type="file" accept=".csv,text/csv"><div id="csvMessage" class="notice" style="grid-column:1/-1"></div></div>
 <div id="setup" class="setup"><h2>WLAN EINRICHTEN</h2><label for="ssid">NETZWERKNAME</label><input id="ssid" maxlength="32"><label for="password">PASSWORT</label><input id="password" type="password" maxlength="64"><button id="saveWifi" class="action">SPEICHERN UND NEUSTARTEN</button><button id="resetWifi" class="link">WLAN-ZUGANGSDATEN LÖSCHEN</button></div></section>
 </main><script>
-const el=id=>document.getElementById(id);let recipes=[],selectedRecipe=null,quantityMl=200,mixing=false;
+const el=id=>document.getElementById(id);let recipes=[],selectedRecipe=null,quantityMl=200,mixing=false,seenMixing=false,cheersTimer=null,cheersUntil=0;
+function tap(b){b.classList.remove('picked');void b.offsetWidth;b.classList.add('picked')}
+function setGlass(p){p=Math.max(0,Math.min(100,Number(p)||0));el('liquidLevel').setAttribute('transform',`translate(0 ${160-p*1.43})`)}
+function showCheers(){const c=el('cheers');clearTimeout(cheersTimer);cheersUntil=Date.now()+2700;c.classList.remove('show');void c.offsetWidth;c.classList.add('show');cheersTimer=setTimeout(()=>{c.classList.remove('show');cheersUntil=0},2700)}
 async function request(url,options){const r=await fetch(url,options);const body=await r.text();if(!r.ok)throw Error(body||('HTTP '+r.status));return body?JSON.parse(body):{}}
 function post(url,data){return request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})}
-async function loadRecipes(){try{recipes=await(await fetch('/api/recipes')).json();selectedRecipe=null;el('start').disabled=true;el('recipes').innerHTML='';recipes.forEach((recipe,index)=>{const button=document.createElement('button');button.className='recipe';button.textContent=recipe.name;button.addEventListener('click',()=>{selectedRecipe=index;document.querySelectorAll('.recipe').forEach((b,i)=>b.classList.toggle('selected',i===index));el('start').disabled=mixing});el('recipes').append(button)});el('message').textContent=recipes.length?'MIXTUR WÄHLEN':'KEINE MIXTUREN VERFÜGBAR'}catch(e){el('message').textContent='MIXTUREN NICHT ERREICHBAR'}}
-el('sizes').addEventListener('click',e=>{const b=e.target.closest('[data-ml]');if(!b)return;quantityMl=Number(b.dataset.ml);document.querySelectorAll('.size').forEach(x=>x.classList.toggle('selected',x===b))});
-el('start').addEventListener('click',async()=>{if(selectedRecipe===null||mixing)return;el('start').disabled=true;el('message').textContent='BESTELLUNG WIRD GESENDET';try{await post('/api/order',{cocktail_id:selectedRecipe,quantity_ml:quantityMl});el('message').textContent='MIXUNG GESTARTET'}catch(e){el('message').textContent='FEHLER: '+e.message;el('start').disabled=false}});
-async function updateProgress(){try{const s=await(await fetch('/api/status')).json();mixing=!!s.mixing;el('progressName').textContent=mixing?s.recipe:'BEREIT';el('progressPct').textContent=(s.progress||0)+' %';el('progressBar').style.width=(s.progress||0)+'%';if(mixing){el('message').textContent='MIXUNG LÄUFT';el('start').disabled=true}else{if(s.aborted)el('message').textContent='ABGEBROCHEN';else if(el('message').textContent==='MIXUNG LÄUFT'||el('message').textContent==='MIXUNG GESTARTET')el('message').textContent='FERTIG';el('start').disabled=selectedRecipe===null}}catch(e){el('message').textContent='VERBINDUNG UNTERBROCHEN'}}
+async function loadRecipes(){try{recipes=await(await fetch('/api/recipes')).json();selectedRecipe=null;el('start').disabled=true;el('recipes').innerHTML='';recipes.forEach((recipe,index)=>{const button=document.createElement('button');button.className='recipe';button.textContent=recipe.name;button.addEventListener('click',()=>{selectedRecipe=index;tap(button);document.querySelectorAll('.recipe').forEach((b,i)=>b.classList.toggle('selected',i===index));el('start').disabled=mixing});el('recipes').append(button)});el('message').textContent=recipes.length?'':'KEINE MIXTUREN VERFÜGBAR'}catch(e){el('message').textContent='MIXTUREN NICHT ERREICHBAR'}}
+el('sizes').addEventListener('click',e=>{const b=e.target.closest('[data-ml]');if(!b)return;quantityMl=Number(b.dataset.ml);tap(b);document.querySelectorAll('.size').forEach(x=>x.classList.toggle('selected',x===b))});
+el('start').addEventListener('click',async()=>{if(selectedRecipe===null||mixing)return;el('start').disabled=true;el('start').classList.add('starting');setTimeout(()=>el('start').classList.remove('starting'),350);el('start').textContent='STARTET ...';el('message').textContent='BESTELLUNG WIRD GESENDET';try{await post('/api/order',{cocktail_id:selectedRecipe,quantity_ml:quantityMl});el('message').textContent='MIXUNG GESTARTET'}catch(e){el('message').textContent='FEHLER: '+e.message;el('start').disabled=false}finally{el('start').textContent='MIXEN'}});
+let statusBusy=false;
+async function updateProgress(){
+ if(statusBusy)return;statusBusy=true;
+ try{
+  const s=await(await fetch('/api/status')).json();
+  const wasMixing=mixing;
+  mixing=!!s.mixing;
+  if(mixing)seenMixing=true;
+  const completed=wasMixing&&!mixing&&!s.aborted&&seenMixing;
+  if(completed){showCheers();seenMixing=false}
+  if(!mixing&&s.aborted)seenMixing=false;
+  const celebrating=!mixing&&Date.now()<cheersUntil;
+  const progress=celebrating?100:Math.max(0,Math.min(100,Number(s.progress)||0));
+  setGlass(progress);
+  if(mixing){el('message').textContent='MIXUNG LÄUFT';el('start').disabled=true}
+  else{
+   if(s.aborted)el('message').textContent='ABGEBROCHEN';
+   else if(completed||celebrating)el('message').textContent='';
+   else if(el('message').textContent==='CHEERS')el('message').textContent='';
+   el('start').disabled=selectedRecipe===null;
+  }
+ }catch(e){el('message').textContent='VERBINDUNG UNTERBROCHEN'}
+ finally{statusBusy=false}
+}
 el('settingsToggle').addEventListener('click',()=>el('settings').classList.toggle('open'));
 el('saveCalibration').addEventListener('click',async()=>{const message=el('calibrationMessage');try{await post('/api/calibration',{seconds_per_2ml:Number(el('seconds').value)});message.textContent='FAKTOR GESPEICHERT'}catch(e){message.textContent='FEHLER: '+e.message}});
 el('importCsv').addEventListener('click',()=>el('csvFile').click());
