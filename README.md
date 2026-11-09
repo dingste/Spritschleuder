@@ -16,7 +16,7 @@ Beim ersten Build lädt der ESP-IDF Component Manager die offizielle Komponente 
 
 Der Pumpencontroller ist ein eigenes Ziel: `main/arduino_main.cpp` und `main/pump_controller.cpp` müssen zusätzlich mit der Arduino-IDE oder PlatformIO auf den angeschlossenen Arduino geladen werden. Nach jedem ESP32-Reset fordert der ESP32 den LED-Test beim Arduino an: D2 bis D5 nacheinander je eine Sekunde, danach alle vier gemeinsam eine Sekunde. Der Arduino quittiert den Testbefehl erst nach Ende der Sequenz; anschließend verarbeitet er normale UART-Befehle.
 
-Die Durchflusskalibrierung liegt separat in `main/pump_controller.cpp`. `PUMP_MILLISECONDS_PER_ML` enthält einen Wert pro Pumpe; die aktuellen 450 ms/ml sind nur der bisherige Projekt-Basiswert und müssen nach Messung für jede Pumpe angepasst werden. Zum Kalibrieren die jeweilige Pumpe eine bekannte Zeit laufen lassen und das Volumen messen; ms/ml ergibt sich aus Laufzeit in Millisekunden geteilt durch geförderte ml.
+Die globale Durchflusskalibrierung wird in den Einstellungen der Weboberfläche als Laufzeit für 2 ml eingestellt und im ESP32-NVS gespeichert. Der ESP32 übermittelt den Faktor beim Start und bei jeder Änderung an den Arduino. Der Startwert von 0,9 Sekunden für 2 ml entspricht der bisherigen Annahme von 450 ms/ml; zur Kalibrierung kann der Betreiber eine bekannte Zeit laufen lassen, das Volumen messen und diesen einen globalen Richtwert anpassen.
 
 ## Bedienung
 
@@ -25,12 +25,14 @@ Die Durchflusskalibrierung liegt separat in `main/pump_controller.cpp`. `PUMP_MI
 - K1 (GPIO 8) stoppt alle Pumpen unmittelbar. Nach ungefähr drei Sekunden kehrt das Display selbstständig zur Hauptansicht zurück; es wird nicht auf ein Arduino-ACK gewartet.
 - K2 (GPIO 10) schaltet zwischen Haupt- und Infoansicht um. Die Infoansicht zeigt IP-Adresse und QR-Code zur Geräte-URL.
 - Neue Mixturen werden in der Weboberfläche als relative ml-Anteile je Pumpe angelegt und dauerhaft im NVS gespeichert. Maximal sind 20 Mixturen vorgesehen.
+- Die Weboberfläche zeigt Mixturauswahl, Portionsgröße und einen geschätzten Mischfortschritt. Kalibrierung und WLAN-Konfiguration liegen unter „Einstellungen“.
 
 ## Aufbau
 
 - `main/main.cpp`: Initialisierung und Startreihenfolge
 - `main/cocktail_server.cpp`: eingebettete Weboberfläche und HTTP-API
 - `main/recipes.cpp`: Rezeptverwaltung und NVS-Persistenz
+- `main/flow_calibration.cpp`: globaler Durchflussfaktor und NVS-Persistenz
 - `main/arduino_comm.cpp`: UART-Protokoll, Befehlswarteschlange und Abbruch
 - `main/arduino_main.cpp`: Firmware des separaten Pumpen-Arduinos
 - `main/display_manager.cpp`: Displayzustände, Fortschritt und QR-Code
@@ -45,15 +47,16 @@ Ein Pumpenbefehl besteht aus fünf Bytes:
 0xAA  PUMP_ID  AMOUNT_ML_HI  AMOUNT_ML_LO  0x55
 ```
 
-Die angeforderte Menge ist eine 16-Bit-Zahl in Millilitern. Der Arduino wandelt sie mit dem individuellen ms/ml-Wert der Pumpe in eine Laufzeit um und verwaltet für jede Pumpe eine eigene Abschaltzeit. Mehrere Startbefehle werden direkt hintereinander übertragen und die Pumpen laufen parallel. Eine Menge `0` schaltet die betreffende Pumpe sofort aus. Beim Abbruch werden solche AUS-Befehle für alle vier Pumpen gesendet. Pumpen-ID `0xFE` mit Menge `0` startet stattdessen den LED-Selbsttest; dessen ACK kommt erst nach der vollständigen Sequenz.
+Die angeforderte Menge ist eine 16-Bit-Zahl in Millilitern. Der Arduino multipliziert sie mit dem globalen ms/ml-Wert und verwaltet je Pumpe eine eigene Abschaltzeit. Mehrere Startbefehle werden direkt hintereinander übertragen und die Pumpen laufen parallel. Eine Menge `0` schaltet die betreffende Pumpe sofort aus. Pumpen-ID `0xFD` setzt den globalen Faktor; der Arduino bestätigt die Übernahme. Beim Abbruch werden AUS-Befehle für alle vier Pumpen gesendet. Pumpen-ID `0xFE` mit Menge `0` startet den LED-Selbsttest; dessen ACK kommt erst nach der vollständigen Sequenz.
 
 ## HTTP-API
 
-- `GET /api/status` – WLAN- und Verbindungsstatus
+- `GET /api/status` – WLAN-Status und Mischfortschritt
 - `GET /api/recipes` – Liste aller Mixturen
 - `POST /api/recipes` – Mixtur mit `name` und `pump0_ml` bis `pump3_ml` speichern
 - `POST /api/order` – Mixtur mit `cocktail_id` und `quantity_ml` starten
 - `POST /api/abort` – laufende Mischung sofort abbrechen
+- `GET/POST /api/calibration` – globalen Richtwert „Sekunden für 2 ml“ abfragen oder speichern
 - `POST /api/wifi` und `POST /api/wifi/reset` – WLAN konfigurieren beziehungsweise löschen
 
 ## Hinweise für Änderungen

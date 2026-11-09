@@ -19,6 +19,7 @@ public:
     static ArduinoComm& getInstance();
     
     bool init();
+    bool setCalibration(uint16_t milliseconds_per_ml);
     void sendOrder(const CocktailOrder& order);
     void abort();
     

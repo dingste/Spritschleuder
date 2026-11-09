@@ -2,6 +2,7 @@
 #include "config.h"
 #include "esp_log.h"
 #include "recipes.h"
+#include "flow_calibration.h"
 
 static const char *TAG = "arduino_comm";
 
@@ -38,10 +39,36 @@ bool ArduinoComm::init() {
     } else {
         ESP_LOGW(TAG, "Kein ACK nach Arduino-Pumpentest empfangen (Bytes: %d)", ack_bytes);
     }
+
+    const bool calibration_acknowledged = test_acknowledged &&
+        setCalibration(FlowCalibration::millisecondsPerMl());
+    if (calibration_acknowledged) {
+        ESP_LOGI(TAG, "Globaler Durchflussfaktor vom Arduino bestaetigt (%u ms/ml)",
+                 FlowCalibration::millisecondsPerMl());
+    } else if (test_acknowledged) {
+        ESP_LOGE(TAG, "Arduino hat den globalen Durchflussfaktor nicht bestaetigt");
+    }
     
     xTaskCreate(uart_task, "uart_task", 4096, this, 5, &uart_task_handle);
     ESP_LOGI(TAG, "UART Kommunikation initialisiert");
-    return test_acknowledged;
+    return test_acknowledged && calibration_acknowledged;
+}
+
+bool ArduinoComm::setCalibration(uint16_t milliseconds_per_ml) {
+    if (milliseconds_per_ml < FlowCalibration::MIN_MILLISECONDS_PER_ML ||
+        milliseconds_per_ml > FlowCalibration::MAX_MILLISECONDS_PER_ML) return false;
+
+    const uint8_t frame[5] = {
+        0xAA, 0xFD, static_cast<uint8_t>(milliseconds_per_ml >> 8),
+        static_cast<uint8_t>(milliseconds_per_ml & 0xFF), 0x55
+    };
+    uint8_t ack[3] = {};
+    std::lock_guard<std::mutex> lock(uart_mutex);
+    uart_flush_input(UART_PORT_NUM);
+    if (uart_write_bytes(UART_PORT_NUM, frame, sizeof(frame)) != sizeof(frame)) return false;
+    if (uart_wait_tx_done(UART_PORT_NUM, pdMS_TO_TICKS(100)) != ESP_OK) return false;
+    const int count = uart_read_bytes(UART_PORT_NUM, ack, sizeof(ack), pdMS_TO_TICKS(500));
+    return count == sizeof(ack) && ack[0] == 0xBB && ack[1] == 0xFD && ack[2] == 0x55;
 }
 
 void ArduinoComm::sendOrder(const CocktailOrder& order) {

@@ -5,9 +5,8 @@ namespace {
 
 // Arduino digital pins D2-D5; connect one LED with a series resistor per pin.
 const uint8_t PUMP_PINS[PUMP_COUNT] = {2, 3, 4, 5};
-// Calibration: milliseconds needed for one ml, one editable value per pump.
-// 450 ms/ml retains the project's previous baseline until each pump is measured.
-const uint16_t PUMP_MILLISECONDS_PER_ML[PUMP_COUNT] = {450, 450, 450, 450};
+// One global estimate, configurable from the ESP32 web settings.
+uint16_t millisecondsPerMl = 450;
 unsigned long pumpStops[PUMP_COUNT] = {};
 
 void setAllLow() {
@@ -46,10 +45,13 @@ void setForAmountMl(uint8_t pumpId, uint16_t amountMl) {
         return;
     }
 
-    const uint32_t durationMs =
-        static_cast<uint32_t>(amountMl) * PUMP_MILLISECONDS_PER_ML[pumpId];
+    const uint32_t durationMs = static_cast<uint32_t>(amountMl) * millisecondsPerMl;
     digitalWrite(PUMP_PINS[pumpId], HIGH);
     pumpStops[pumpId] = millis() + durationMs;
+}
+
+void setMillisecondsPerMl(uint16_t value) {
+    if (value >= 50 && value <= 60000) millisecondsPerMl = value;
 }
 
 void update() {

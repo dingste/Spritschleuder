@@ -2,6 +2,7 @@
 #include "arduino_comm.h"
 #include "config.h"
 #include "display_manager.h"
+#include "cocktail_server.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 
@@ -18,7 +19,7 @@ void ButtonManager::task(void *) {
         int abort_level = gpio_get_level(static_cast<gpio_num_t>(ABORT_BUTTON_PIN));
         int info_level = gpio_get_level(static_cast<gpio_num_t>(INFO_BUTTON_PIN));
         if (!abort_level && last_abort) {
-            ArduinoComm::getInstance().abort(); DisplayManager::getInstance().showAborted();
+            ArduinoComm::getInstance().abort(); CocktailServer::markAborted(); DisplayManager::getInstance().showAborted();
             ESP_LOGW(TAG, "Mischung per Geraetetaste abgebrochen");
         }
         if (!info_level && last_info) DisplayManager::getInstance().toggleInfo();

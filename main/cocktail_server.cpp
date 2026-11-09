@@ -4,17 +4,65 @@
 #include "display_manager.h"
 #include "recipes.h"
 #include "wifi_manager.h"
+#include "flow_calibration.h"
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <cstdlib>
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <string>
 
 static const char *TAG = "web";
-static const char PAGE[] = R"HTML(<!doctype html><html lang="de"><meta name="viewport" content="width=device-width"><meta charset="utf-8"><link rel="icon" href="data:,"><title>Spritschleuder</title><style>body{font:16px system-ui;max-width:680px;margin:auto;padding:20px;background:#171717;color:#eee}section{background:#292929;padding:18px;margin:14px 0;border-radius:12px}button,input,select{font:inherit;padding:10px;margin:5px;border-radius:7px;border:0}button{background:#f57c00;color:white;cursor:pointer}.ok{color:#ff9800}.stop{background:#f57c00;font-weight:bold}.pumps{display:grid;grid-template-columns:auto 1fr;align-items:center}</style><h1>🍹 Spritschleuder</h1><section id="setup"><h2>WLAN einrichten</h2><input id="ssid" placeholder="WLAN-Name"><input id="pass" type="password" placeholder="Passwort"><button onclick="wifi()">Speichern & Neustarten</button></section><section><h2>Cocktail mixen</h2><select id="drink"></select><select id="ml"><option>40</option><option selected>200</option><option>400</option></select> ml <button onclick="mix()">Mixen</button><button class="stop" onclick="abortMix()">SOFORT STOPP</button><p id="msg"></p></section><section><h2>Neue Mixtur</h2><input id="recipeName" maxlength="24" placeholder="Name"><div class="pumps"><label>Pumpe 1</label><input id="p0" type="number" min="0" max="1000" value="0"><label>Pumpe 2</label><input id="p1" type="number" min="0" max="1000" value="0"><label>Pumpe 3</label><input id="p2" type="number" min="0" max="1000" value="0"><label>Pumpe 4</label><input id="p3" type="number" min="0" max="1000" value="0"></div><small>Anteile in ml; 0 lässt eine Pumpe aus.</small><br><button onclick="addRecipe()">Mixtur speichern</button></section><section><button onclick="resetWifi()">WLAN-Konfiguration löschen</button></section><script>async function post(u,o){let r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)}),t=await r.text();if(!r.ok)throw Error(t);return t}async function loadRecipes(){try{let response=await fetch('/api/recipes');if(!response.ok)throw Error('Mixturen konnten nicht geladen werden');let rs=await response.json();let select=document.getElementById('drink');select.innerHTML='';rs.forEach((r,i)=>select.add(new Option(r.name,i)));if(!rs.length)document.getElementById('msg').textContent='Keine Mixturen vorhanden'}catch(e){document.getElementById('msg').textContent='Fehler beim Laden der Mixturen: '+e.message}}async function wifi(){let message=document.getElementById('msg');try{await post('/api/wifi',{ssid:document.getElementById('ssid').value,password:document.getElementById('pass').value});message.textContent='Gespeichert. Gerät startet neu…'}catch(e){message.textContent=e.message}}async function mix(){let select=document.getElementById('drink'),message=document.getElementById('msg');if(!select.value){message.textContent='Bitte zuerst eine Mixtur auswählen';return}message.textContent='Bestellung wird gesendet…';try{await post('/api/order',{cocktail_id:Number(select.value),quantity_ml:Number(document.getElementById('ml').value)});message.className='ok';message.textContent='Bestellung angenommen'}catch(e){message.className='';message.textContent='Bestellung fehlgeschlagen: '+e.message}}async function abortMix(){let message=document.getElementById('msg');try{await post('/api/abort',{});message.className='';message.textContent='Mischung abgebrochen'}catch(e){message.textContent='Stopp fehlgeschlagen: '+e.message}}async function addRecipe(){let value=id=>document.getElementById(id).value,message=document.getElementById('msg');try{await post('/api/recipes',{name:value('recipeName'),pump0_ml:+value('p0'),pump1_ml:+value('p1'),pump2_ml:+value('p2'),pump3_ml:+value('p3')});document.getElementById('recipeName').value='';['p0','p1','p2','p3'].forEach(id=>document.getElementById(id).value=0);await loadRecipes();message.className='ok';message.textContent='Mixtur gespeichert'}catch(e){message.textContent='Speichern fehlgeschlagen: '+e.message}}async function resetWifi(){if(confirm('WLAN wirklich löschen?'))await post('/api/wifi/reset',{})}loadRecipes()</script></html>)HTML";
+static std::mutex order_state_mutex;
+static bool order_active = false;
+static bool order_aborted = false;
+static std::string active_recipe;
+static int64_t order_started_us = 0;
+static uint32_t order_duration_ms = 0;
+static std::string jsonEscape(const std::string &value);
+static const char PAGE[] = R"HTML(<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#000000"><title>Spritschleuder</title>
+<style>
+:root{color-scheme:dark;--orange:#ff9e00;--black:#000;--panel:#212121;--dark:#101010;--muted:#848484;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--black);color:var(--white);font:600 16px/1.45 "Courier New",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.06em}
+header{height:54px;background:var(--orange);color:var(--black);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;letter-spacing:.12em;border-bottom:3px solid #6b4300}
+main{width:min(100%,620px);margin:auto;padding:20px 16px 32px}.label{font-size:12px;color:var(--muted);margin:2px 0 10px}.recipes{display:grid;gap:9px}.recipe{width:100%;min-height:56px;text-align:left;background:var(--panel);color:var(--white);border:1px solid #343434;border-radius:5px;padding:14px 16px;font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer}.recipe.selected{background:#332300;border:2px solid var(--orange);color:var(--orange)}
+.sizes{display:flex;gap:8px;margin:18px 0}.size{flex:1;background:var(--panel);color:var(--white);border:1px solid #343434;border-radius:4px;padding:12px 4px;font:inherit;cursor:pointer}.size.selected{background:var(--orange);border-color:var(--orange);color:var(--black)}
+.start{width:100%;background:var(--orange);color:var(--black);border:0;border-radius:4px;padding:15px;font-family:inherit;font-size:17px;font-weight:900;letter-spacing:.1em;text-transform:inherit;cursor:pointer}.start:disabled{opacity:.35;cursor:default}.progress{margin-top:20px;background:var(--panel);padding:16px;border-radius:4px}.progress-head{display:flex;justify-content:space-between;gap:8px;font-size:13px}.track{height:17px;background:var(--dark);margin-top:13px;padding:3px}.bar{height:100%;width:0;background:var(--orange);transition:width .35s linear}.status{font-size:12px;color:var(--muted);margin-top:10px;min-height:18px}
+footer{text-align:center;margin:16px}.link{background:none;color:var(--muted);border:0;padding:10px;font:inherit;font-size:11px;cursor:pointer;text-decoration:underline;text-underline-offset:4px}.settings{display:none;background:var(--panel);padding:18px;margin-top:14px;border-radius:4px}.settings.open{display:block}.settings h2{font-size:14px;color:var(--orange);margin:0 0 14px}.settings label{display:block;font-size:11px;color:var(--muted);margin:12px 0 5px}.settings input{width:100%;padding:12px;background:var(--dark);border:1px solid #444;border-radius:3px;color:var(--white);font:inherit;text-transform:none}.action{background:var(--orange);color:var(--black);border:0;padding:12px;width:100%;margin-top:9px;font:inherit;font-size:12px;cursor:pointer}.setup{display:none;border-top:1px solid #444;margin-top:18px;padding-top:16px}.setup.open{display:block}.notice{font-size:11px;color:var(--muted);margin:10px 0}.hidden{display:none!important}
+</style></head><body>
+<header>SPRITSCHLEUDER</header><main>
+<div class="label">MIXTUR AUSWÄHLEN</div><div id="recipes" class="recipes"></div>
+<div class="label" style="margin-top:18px">MENGE</div><div class="sizes" id="sizes"><button class="size" data-ml="40">40 ML</button><button class="size selected" data-ml="200">200 ML</button><button class="size" data-ml="400">400 ML</button></div>
+<button id="start" class="start" disabled>MIXEN</button>
+<section class="progress"><div class="progress-head"><span id="progressName">BEREIT</span><span id="progressPct">0 %</span></div><div class="track"><div id="progressBar" class="bar"></div></div><div id="message" class="status">MIXTUR WÄHLEN</div></section>
+<footer><button id="settingsToggle" class="link">EINSTELLUNGEN</button></footer>
+<section id="settings" class="settings"><h2>ANPASSEN</h2><label for="seconds">PUMPENLAUFZEIT FÜR 2 ML (SEKUNDEN)</label><input id="seconds" type="number" min="0.1" max="120" step="0.1"><button id="saveCalibration" class="action">FAKTOR SPEICHERN</button><div id="calibrationMessage" class="notice"></div>
+<div id="setup" class="setup"><h2>WLAN EINRICHTEN</h2><label for="ssid">NETZWERKNAME</label><input id="ssid" maxlength="32"><label for="password">PASSWORT</label><input id="password" type="password" maxlength="64"><button id="saveWifi" class="action">SPEICHERN UND NEUSTARTEN</button><button id="resetWifi" class="link">WLAN-ZUGANGSDATEN LÖSCHEN</button></div></section>
+</main><script>
+const el=id=>document.getElementById(id);let recipes=[],selectedRecipe=null,quantityMl=200,mixing=false;
+async function request(url,options){const r=await fetch(url,options);const body=await r.text();if(!r.ok)throw Error(body||('HTTP '+r.status));return body?JSON.parse(body):{}}
+function post(url,data){return request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})}
+async function loadRecipes(){try{recipes=await(await fetch('/api/recipes')).json();el('recipes').innerHTML='';recipes.forEach((recipe,index)=>{const button=document.createElement('button');button.className='recipe';button.textContent=recipe.name;button.addEventListener('click',()=>{selectedRecipe=index;document.querySelectorAll('.recipe').forEach((b,i)=>b.classList.toggle('selected',i===index));el('start').disabled=mixing});el('recipes').append(button)});el('message').textContent=recipes.length?'MIXTUR WÄHLEN':'KEINE MIXTUREN VERFÜGBAR'}catch(e){el('message').textContent='MIXTUREN NICHT ERREICHBAR'}}
+el('sizes').addEventListener('click',e=>{const b=e.target.closest('[data-ml]');if(!b)return;quantityMl=Number(b.dataset.ml);document.querySelectorAll('.size').forEach(x=>x.classList.toggle('selected',x===b))});
+el('start').addEventListener('click',async()=>{if(selectedRecipe===null||mixing)return;el('start').disabled=true;el('message').textContent='BESTELLUNG WIRD GESENDET';try{await post('/api/order',{cocktail_id:selectedRecipe,quantity_ml:quantityMl});el('message').textContent='MIXUNG GESTARTET'}catch(e){el('message').textContent='FEHLER: '+e.message;el('start').disabled=false}});
+async function updateProgress(){try{const s=await(await fetch('/api/status')).json();mixing=!!s.mixing;el('progressName').textContent=mixing?s.recipe:'BEREIT';el('progressPct').textContent=(s.progress||0)+' %';el('progressBar').style.width=(s.progress||0)+'%';if(mixing){el('message').textContent='MIXUNG LÄUFT';el('start').disabled=true}else{if(s.aborted)el('message').textContent='ABGEBROCHEN';else if(el('message').textContent==='MIXUNG LÄUFT'||el('message').textContent==='MIXUNG GESTARTET')el('message').textContent='FERTIG';el('start').disabled=selectedRecipe===null}}catch(e){el('message').textContent='VERBINDUNG UNTERBROCHEN'}}
+el('settingsToggle').addEventListener('click',()=>el('settings').classList.toggle('open'));
+el('saveCalibration').addEventListener('click',async()=>{const message=el('calibrationMessage');try{await post('/api/calibration',{seconds_per_2ml:Number(el('seconds').value)});message.textContent='FAKTOR GESPEICHERT'}catch(e){message.textContent='FEHLER: '+e.message}});
+el('saveWifi').addEventListener('click',async()=>{try{await post('/api/wifi',{ssid:el('ssid').value,password:el('password').value});el('calibrationMessage').textContent='GESPEICHERT. GERÄT STARTET NEU'}catch(e){el('calibrationMessage').textContent='FEHLER: '+e.message}});
+el('resetWifi').addEventListener('click',async()=>{if(confirm('WLAN-ZUGANGSDATEN LÖSCHEN?'))try{await post('/api/wifi/reset',{});el('calibrationMessage').textContent='GERÄT STARTET NEU'}catch(e){el('calibrationMessage').textContent='FEHLER: '+e.message}});
+async function init(){await loadRecipes();try{const c=await(await fetch('/api/calibration')).json();el('seconds').value=c.seconds_per_2ml.toFixed(1)}catch(e){el('calibrationMessage').textContent='KALIBRIERUNG NICHT ERREICHBAR'}try{const s=await(await fetch('/api/status')).json();el('setup').classList.toggle('open',!s.configured)}catch(e){}updateProgress();setInterval(updateProgress,500)}init();
+</script></body></html>)HTML";
 
 CocktailServer &CocktailServer::getInstance() { static CocktailServer i; return i; }
 static void jsonReply(httpd_req_t *r, const char *body, const char *status = nullptr) { if (status) httpd_resp_set_status(r, status); httpd_resp_set_type(r, "application/json"); httpd_resp_sendstr(r, body); }
@@ -34,6 +82,12 @@ static bool jsonInt(const std::string &body, const char *key, int &value) {
     if (p == std::string::npos || (p = body.find(':', p + token.size())) == std::string::npos) return false;
     char *end = nullptr; long number = std::strtol(body.c_str() + p + 1, &end, 10); if (end == body.c_str() + p + 1) return false; value = static_cast<int>(number); return true;
 }
+static bool jsonNumber(const std::string &body, const char *key, double &value) {
+    std::string token = std::string("\"") + key + "\""; size_t p = body.find(token);
+    if (p == std::string::npos || (p = body.find(':', p + token.size())) == std::string::npos) return false;
+    char *end = nullptr; value = std::strtod(body.c_str() + p + 1, &end);
+    return end != body.c_str() + p + 1;
+}
 
 esp_err_t CocktailServer::start() {
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG(); cfg.server_port = HTTP_PORT; cfg.max_uri_handlers = 10;
@@ -44,6 +98,8 @@ esp_err_t CocktailServer::start() {
         {"/api/wifi/reset", HTTP_POST, resetWifiHandler, nullptr},
         {"/api/recipes", HTTP_GET, recipesHandler, nullptr}, {"/api/recipes", HTTP_POST, addRecipeHandler, nullptr},
         {"/api/abort", HTTP_POST, abortHandler, nullptr},
+        {"/api/calibration", HTTP_GET, calibrationHandler, nullptr},
+        {"/api/calibration", HTTP_POST, calibrationHandler, nullptr},
     };
     for (const auto &route : routes) ESP_ERROR_CHECK(httpd_register_uri_handler(server, &route));
     ESP_LOGI(TAG, "Webserver gestartet"); return ESP_OK;
@@ -52,8 +108,22 @@ void CocktailServer::stop() { if (server) { httpd_stop(server); server = nullptr
 esp_err_t CocktailServer::pageHandler(httpd_req_t *r) { httpd_resp_set_type(r, "text/html; charset=utf-8"); return httpd_resp_send(r, PAGE, HTTPD_RESP_USE_STRLEN); }
 esp_err_t CocktailServer::statusHandler(httpd_req_t *r) {
     auto &w = WifiManager::getInstance();
+    bool mixing;
+    uint32_t progress;
+    std::string recipe;
+    {
+        std::lock_guard<std::mutex> lock(order_state_mutex);
+        const uint32_t elapsed_ms = static_cast<uint32_t>(std::max<int64_t>(0, (esp_timer_get_time() - order_started_us) / 1000));
+        if (order_active && elapsed_ms >= order_duration_ms) order_active = false;
+        mixing = order_active;
+        progress = order_duration_ms ? std::min<uint64_t>(100, static_cast<uint64_t>(elapsed_ms) * 100 / order_duration_ms) : 0;
+        if (order_aborted) progress = 0;
+        recipe = active_recipe;
+    }
     std::string out = std::string("{\"configured\":") + (w.isConfigured() ? "true" : "false") +
-        ",\"connected\":" + (w.isConnected() ? "true" : "false") + ",\"ip\":\"" + w.ipAddress() + "\"}";
+        ",\"connected\":" + (w.isConnected() ? "true" : "false") + ",\"ip\":\"" + w.ipAddress() +
+        "\",\"mixing\":" + (mixing ? "true" : "false") + ",\"progress\":" + std::to_string(progress) +
+        ",\"aborted\":" + (order_aborted ? "true" : "false") + ",\"recipe\":\"" + jsonEscape(recipe) + "\"}";
     jsonReply(r, out.c_str()); return ESP_OK;
 }
 esp_err_t CocktailServer::orderHandler(httpd_req_t *r) {
@@ -78,7 +148,23 @@ esp_err_t CocktailServer::resetWifiHandler(httpd_req_t *r) {
 }
 void CocktailServer::processOrder(const CocktailOrder &o) {
     ESP_LOGI(TAG, "Bestellung: %s (%d ml)", o.recipe.name.c_str(), o.quantity_ml);
-    ArduinoComm::getInstance().sendOrder(o); DisplayManager::getInstance().showMixing(o.recipe, o.quantity_ml);
+    const uint16_t calibration = FlowCalibration::millisecondsPerMl();
+    uint32_t total = 0, duration_ms = 0;
+    for (uint8_t i = 0; i < o.recipe.num_ingredients; ++i) total += o.recipe.ingredients[i].amount_ml;
+    if (total) for (uint8_t i = 0; i < o.recipe.num_ingredients; ++i) {
+        const uint32_t amount_ml = o.recipe.ingredients[i].amount_ml * o.quantity_ml / total;
+        duration_ms = std::max(duration_ms, amount_ml * calibration);
+    }
+    ArduinoComm::getInstance().sendOrder(o);
+    DisplayManager::getInstance().showMixing(o.recipe, o.quantity_ml, calibration);
+    {
+        std::lock_guard<std::mutex> lock(order_state_mutex);
+        active_recipe = o.recipe.name;
+        order_started_us = esp_timer_get_time();
+        order_duration_ms = std::max<uint32_t>(1, duration_ms);
+        order_active = true;
+        order_aborted = false;
+    }
 }
 
 static std::string jsonEscape(const std::string &value) {
@@ -102,5 +188,45 @@ esp_err_t CocktailServer::addRecipeHandler(httpd_req_t *r) {
     if (result != ESP_OK) jsonReply(r, "{\"error\":\"Mixtur ungueltig oder Speicher voll\"}", "400 Bad Request"); else jsonReply(r, "{\"status\":\"ok\"}"); return ESP_OK;
 }
 esp_err_t CocktailServer::abortHandler(httpd_req_t *r) {
-    ArduinoComm::getInstance().abort(); DisplayManager::getInstance().showAborted(); jsonReply(r, "{\"status\":\"aborted\"}"); return ESP_OK;
+    ArduinoComm::getInstance().abort();
+    markAborted();
+    DisplayManager::getInstance().showAborted(); jsonReply(r, "{\"status\":\"aborted\"}"); return ESP_OK;
+}
+void CocktailServer::markAborted() {
+    std::lock_guard<std::mutex> lock(order_state_mutex);
+    order_active = false;
+    order_aborted = true;
+    order_duration_ms = 0;
+}
+esp_err_t CocktailServer::calibrationHandler(httpd_req_t *r) {
+    if (r->method == HTTP_GET) {
+        char response[64];
+        const double seconds_per_2ml = FlowCalibration::millisecondsPerMl() / 500.0;
+        std::snprintf(response, sizeof(response), "{\"seconds_per_2ml\":%.1f}", seconds_per_2ml);
+        jsonReply(r, response);
+        return ESP_OK;
+    }
+
+    std::string body;
+    double seconds_per_2ml;
+    if (!readBody(r, body) || !jsonNumber(body, "seconds_per_2ml", seconds_per_2ml) ||
+        !std::isfinite(seconds_per_2ml) || seconds_per_2ml < 0.1 || seconds_per_2ml > 120.0) {
+        jsonReply(r, "{\"error\":\"Laufzeit muss zwischen 0,1 und 120 Sekunden liegen\"}", "400 Bad Request");
+        return ESP_OK;
+    }
+
+    const uint16_t old_factor = FlowCalibration::millisecondsPerMl();
+    const uint16_t milliseconds_per_ml = static_cast<uint16_t>(std::lround(seconds_per_2ml * 500.0));
+    esp_err_t err = FlowCalibration::setMillisecondsPerMl(milliseconds_per_ml);
+    if (err != ESP_OK) {
+        jsonReply(r, "{\"error\":\"Kalibrierung konnte nicht gespeichert werden\"}", "500 Internal Server Error");
+        return ESP_OK;
+    }
+    if (!ArduinoComm::getInstance().setCalibration(milliseconds_per_ml)) {
+        FlowCalibration::setMillisecondsPerMl(old_factor);
+        jsonReply(r, "{\"error\":\"Arduino hat den Faktor nicht bestätigt\"}", "503 Service Unavailable");
+        return ESP_OK;
+    }
+    jsonReply(r, "{\"status\":\"ok\"}");
+    return ESP_OK;
 }

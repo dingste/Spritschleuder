@@ -65,7 +65,8 @@ void DisplayManager::init() {
     sendCommand(0x01); vTaskDelay(pdMS_TO_TICKS(150)); // SWRESET
     sendCommand(0x11); vTaskDelay(pdMS_TO_TICKS(120)); // SLPOUT
     const uint8_t colmod = 0x05; sendCommand(0x3a, &colmod, 1); // RGB565
-    const uint8_t madctl = 0x00; sendCommand(0x36, &madctl, 1);
+    // The ST7735 panel is wired in BGR order; MADCTL.BGR fixes red/blue swaps.
+    const uint8_t madctl = 0x08; sendCommand(0x36, &madctl, 1);
     sendCommand(0x20); // INVOFF: dieses Board verwendet die nicht-invertierte Farbpalette
     sendCommand(0x13); sendCommand(0x29); vTaskDelay(pdMS_TO_TICKS(20));
     framebuffer = static_cast<uint16_t *>(heap_caps_malloc(DISPLAY_WIDTH * DISPLAY_HEIGHT * 2, MALLOC_CAP_DMA));
@@ -151,12 +152,12 @@ void DisplayManager::showReady() { std::lock_guard<std::mutex> lock(state_mutex)
 void DisplayManager::showAborted() { std::lock_guard<std::mutex> lock(state_mutex); state = State::Aborted; detail.clear(); state_until_us = esp_timer_get_time() + 3000000; }
 void DisplayManager::showMainMenu() { showReady(); }
 void DisplayManager::showError(const std::string &error) { std::lock_guard<std::mutex> lock(state_mutex); state = State::Error; detail = error; }
-void DisplayManager::showMixing(const Recipe &recipe, int ml) {
+void DisplayManager::showMixing(const Recipe &recipe, int ml, uint16_t milliseconds_per_ml) {
     uint32_t duration = 0, total_ml = 0;
     for (uint8_t i = 0; i < recipe.num_ingredients; ++i) total_ml += recipe.ingredients[i].amount_ml;
     for (uint8_t i = 0; i < recipe.num_ingredients; ++i) {
         uint32_t ingredient_ml = recipe.ingredients[i].amount_ml * ml / total_ml;
-        duration = std::max(duration, std::min<uint32_t>(ingredient_ml * 450U, 65535U));
+        duration = std::max(duration, ingredient_ml * milliseconds_per_ml);
     }
     std::lock_guard<std::mutex> lock(state_mutex); state = State::Mixing; detail = recipe.name; quantity_ml = ml;
     mixing_started_us = esp_timer_get_time(); mixing_duration_ms = duration;

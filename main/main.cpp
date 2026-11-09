@@ -14,6 +14,7 @@
 #include "wifi_manager.h"
 #include "button_manager.h"
 #include "recipes.h"
+#include "flow_calibration.h"
 
 static const char *TAG = "cocktailbot_main";
 
@@ -29,6 +30,7 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
     ESP_ERROR_CHECK(RecipeStore::getInstance().init());
+    ESP_ERROR_CHECK(FlowCalibration::init());
     
     // Display initialisieren
     DisplayManager::getInstance().init();

@@ -25,14 +25,17 @@ void loop() {
                 Serial.write(0xBB);
                 Serial.write(pumpId);
                 Serial.write(0x55);
+            } else if (endByte == 0x55 && pumpId == PumpController::CALIBRATION_COMMAND_ID) {
+                const uint16_t value = (static_cast<uint16_t>(durationHi) << 8) | durationLo;
+                PumpController::setMillisecondsPerMl(value);
+                Serial.write(0xBB);
+                Serial.write(pumpId);
+                Serial.write(0x55);
             } else if (endByte == 0x55 && pumpId < PUMP_COUNT) {
                 const uint16_t amountMl =
                     (static_cast<uint16_t>(durationHi) << 8) | durationLo;
                 PumpController::setForAmountMl(pumpId, amountMl);
 
-                Serial.write(0xBB);
-                Serial.write(pumpId);
-                Serial.write(0x55);
             }
         }
     }
