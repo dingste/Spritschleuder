@@ -22,6 +22,7 @@ public:
     std::vector<Recipe> all() const;
     bool get(size_t index, Recipe &recipe) const;
     esp_err_t add(const Recipe &recipe);
+    esp_err_t replaceAll(const std::vector<Recipe> &replacement);
 private:
     RecipeStore() = default;
     esp_err_t save();

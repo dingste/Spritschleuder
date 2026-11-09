@@ -25,7 +25,12 @@ Die globale Durchflusskalibrierung wird in den Einstellungen der Weboberfläche 
 - K1 (GPIO 8) stoppt alle Pumpen unmittelbar. Nach ungefähr drei Sekunden kehrt das Display selbstständig zur Hauptansicht zurück; es wird nicht auf ein Arduino-ACK gewartet.
 - K2 (GPIO 10) schaltet zwischen Haupt- und Infoansicht um. Die Infoansicht zeigt IP-Adresse und QR-Code zur Geräte-URL.
 - Neue Mixturen werden in der Weboberfläche als relative ml-Anteile je Pumpe angelegt und dauerhaft im NVS gespeichert. Maximal sind 20 Mixturen vorgesehen.
+- CSV-Mengen sind ebenfalls relative Anteile, keine festen Pumpenlaufzeiten. Beispiel: `Schlabber,40,40,40,40` ergibt bei 200 ml Bestellung 50 ml je Pumpe. Mit dem Standardfaktor von 0,9 Sekunden für 2 ml laufen die Pumpen dann etwa 22,5 Sekunden parallel. Eine lange Laufzeit ist daher nicht automatisch eine UART-Verzögerung.
 - Die Weboberfläche zeigt Mixturauswahl, Portionsgröße und einen geschätzten Mischfortschritt. Kalibrierung und WLAN-Konfiguration liegen unter „Einstellungen“.
+
+### Arduino flashen
+
+Vor dem Flashen des Arduino die UART-Leitungen zwischen ESP32 und Arduino trennen (ESP-TX/Arduino-RX und ESP-RX/Arduino-TX). Der USB-Seriell-Adapter und der ESP32 dürfen beim Upload nicht gleichzeitig die Arduino-UART-Pins treiben. Nach dem Upload und einem Reset die UART-Leitungen wieder verbinden.
 
 ## Aufbau
 
@@ -54,6 +59,8 @@ Die angeforderte Menge ist eine 16-Bit-Zahl in Millilitern. Der Arduino multipli
 - `GET /api/status` – WLAN-Status und Mischfortschritt
 - `GET /api/recipes` – Liste aller Mixturen
 - `POST /api/recipes` – Mixtur mit `name` und `pump0_ml` bis `pump3_ml` speichern
+- `GET /api/recipes.csv` – Mixturen als CSV herunterladen (`name,pump0_ml,pump1_ml,pump2_ml,pump3_ml`)
+- `POST /api/recipes/import` – CSV importieren; ersetzt die bestehende Mixturliste nach vollständiger Prüfung
 - `POST /api/order` – Mixtur mit `cocktail_id` und `quantity_ml` starten
 - `POST /api/abort` – laufende Mischung sofort abbrechen
 - `GET/POST /api/calibration` – globalen Richtwert „Sekunden für 2 ml“ abfragen oder speichern

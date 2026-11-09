@@ -22,6 +22,8 @@ private:
     static esp_err_t addRecipeHandler(httpd_req_t *);
     static esp_err_t abortHandler(httpd_req_t *);
     static esp_err_t calibrationHandler(httpd_req_t *);
+    static esp_err_t recipesCsvExportHandler(httpd_req_t *);
+    static esp_err_t recipesCsvImportHandler(httpd_req_t *);
     void processOrder(const CocktailOrder &);
     httpd_handle_t server = nullptr;
 };

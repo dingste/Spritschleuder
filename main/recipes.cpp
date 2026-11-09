@@ -38,6 +38,23 @@ esp_err_t RecipeStore::add(const Recipe &recipe) {
     std::lock_guard<std::mutex> lock(mutex); if (recipes.size() >= MAX_COCKTAILS) return ESP_ERR_NO_MEM;
     recipes.push_back(recipe); esp_err_t result = save(); if (result != ESP_OK) recipes.pop_back(); return result;
 }
+esp_err_t RecipeStore::replaceAll(const std::vector<Recipe> &replacement) {
+    if (replacement.empty() || replacement.size() > MAX_COCKTAILS) return ESP_ERR_INVALID_ARG;
+    for (const auto &recipe : replacement) {
+        if (recipe.name.empty() || recipe.name.size() > 24 || !recipe.num_ingredients || recipe.num_ingredients > 4) {
+            return ESP_ERR_INVALID_ARG;
+        }
+        for (uint8_t i = 0; i < recipe.num_ingredients; ++i) {
+            if (recipe.ingredients[i].pump_id >= 4 || recipe.ingredients[i].amount_ml == 0) return ESP_ERR_INVALID_ARG;
+        }
+    }
+    std::lock_guard<std::mutex> lock(mutex);
+    std::vector<Recipe> previous = recipes;
+    recipes = replacement;
+    esp_err_t result = save();
+    if (result != ESP_OK) recipes.swap(previous);
+    return result;
+}
 esp_err_t RecipeStore::save() {
     std::vector<StoredRecipe> stored(recipes.size());
     for (size_t i = 0; i < recipes.size(); ++i) {
