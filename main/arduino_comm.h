@@ -11,14 +11,14 @@
 
 struct ArduinoCommand {
     uint8_t pump_id;
-    uint16_t duration_ms;
+    uint16_t amount_ml;
 };
 
 class ArduinoComm {
 public:
     static ArduinoComm& getInstance();
     
-    void init();
+    bool init();
     void sendOrder(const CocktailOrder& order);
     void abort();
     

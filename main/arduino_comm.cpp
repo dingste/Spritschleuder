@@ -2,7 +2,6 @@
 #include "config.h"
 #include "esp_log.h"
 #include "recipes.h"
-#include <algorithm>
 
 static const char *TAG = "arduino_comm";
 
@@ -11,7 +10,7 @@ ArduinoComm& ArduinoComm::getInstance() {
     return instance;
 }
 
-void ArduinoComm::init() {
+bool ArduinoComm::init() {
     uart_config_t uart_config = {};
     uart_config.baud_rate = UART_BAUD_RATE;
     uart_config.data_bits = UART_DATA_8_BITS;
@@ -23,9 +22,26 @@ void ArduinoComm::init() {
     uart_driver_install(UART_PORT_NUM, 2048, 0, 0, nullptr, 0);
     uart_param_config(UART_PORT_NUM, &uart_config);
     uart_set_pin(UART_PORT_NUM, UART_TX_PIN, UART_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+
+    // Ask the Arduino to run its LED sequence. It acknowledges only after the
+    // four individual outputs and the simultaneous run have completed.
+    uart_flush_input(UART_PORT_NUM);
+    const uint8_t test_command[5] = {0xAA, 0xFE, 0, 0, 0x55};
+    uint8_t ack[3] = {};
+    uart_write_bytes(UART_PORT_NUM, test_command, sizeof(test_command));
+    uart_wait_tx_done(UART_PORT_NUM, pdMS_TO_TICKS(50));
+    const int ack_bytes = uart_read_bytes(UART_PORT_NUM, ack, sizeof(ack), pdMS_TO_TICKS(7000));
+    const bool test_acknowledged = ack_bytes == sizeof(ack) &&
+        ack[0] == 0xBB && ack[1] == 0xFE && ack[2] == 0x55;
+    if (test_acknowledged) {
+        ESP_LOGI(TAG, "Arduino-Pumpentest abgeschlossen (ACK empfangen)");
+    } else {
+        ESP_LOGW(TAG, "Kein ACK nach Arduino-Pumpentest empfangen (Bytes: %d)", ack_bytes);
+    }
     
     xTaskCreate(uart_task, "uart_task", 4096, this, 5, &uart_task_handle);
     ESP_LOGI(TAG, "UART Kommunikation initialisiert");
+    return test_acknowledged;
 }
 
 void ArduinoComm::sendOrder(const CocktailOrder& order) {
@@ -35,9 +51,7 @@ void ArduinoComm::sendOrder(const CocktailOrder& order) {
     for (uint8_t i = 0; i < recipe.num_ingredients; ++i) total += recipe.ingredients[i].amount_ml;
     for (uint8_t i = 0; i < recipe.num_ingredients; ++i) {
         uint32_t ml = recipe.ingredients[i].amount_ml * order.quantity_ml / total;
-        // Kalibrierwert der Altanlage: 200 ml in 90 s => 450 ms/ml.
-        uint32_t duration = std::min<uint32_t>(ml * 450U, 65535U);
-        command_queue.push(ArduinoCommand{recipe.ingredients[i].pump_id, static_cast<uint16_t>(duration)});
+        command_queue.push(ArduinoCommand{recipe.ingredients[i].pump_id, static_cast<uint16_t>(ml)});
     }
 }
 
@@ -75,12 +89,12 @@ void ArduinoComm::uart_task(void *param) {
             generation = comm->abort_generation.load();
         }
         
-        // Protokoll: [START][PUMP_ID][DURATION_HI][DURATION_LO][END]
+        // Protokoll: [START][PUMP_ID][AMOUNT_ML_HI][AMOUNT_ML_LO][END]
         uint8_t buffer[5] = {
             0xAA,                    // Start byte
             cmd.pump_id,             // Pumpen ID
-            (uint8_t)(cmd.duration_ms >> 8),  // Dauer High byte
-            (uint8_t)(cmd.duration_ms & 0xFF), // Dauer Low byte
+            (uint8_t)(cmd.amount_ml >> 8),  // Menge High byte
+            (uint8_t)(cmd.amount_ml & 0xFF), // Menge Low byte
             0x55                     // End byte
         };
         
@@ -91,7 +105,7 @@ void ArduinoComm::uart_task(void *param) {
             if (generation != comm->abort_generation.load()) continue;
             uart_write_bytes(UART_PORT_NUM, buffer, sizeof(buffer));
         }
-        ESP_LOGI(TAG, "Befehl gesendet: Pumpe %d, %d ms", cmd.pump_id, cmd.duration_ms);
+        ESP_LOGI(TAG, "Befehl gesendet: Pumpe %d, %d ml", cmd.pump_id, cmd.amount_ml);
         
         // Alle Startbefehle eines Rezeptes direkt hintereinander senden. Der Arduino
         // schaltet die Pumpen unabhaengig und damit gleichzeitig.

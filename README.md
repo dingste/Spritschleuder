@@ -14,7 +14,9 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 Beim ersten Build lädt der ESP-IDF Component Manager die offizielle Komponente `espressif/qrcode`. Die erzeugte ESP32-C3-Firmware liegt anschließend unter `build/cocktailbot.bin`.
 
-Der Pumpencontroller ist ein eigenes Ziel: `main/arduino_main.cpp` muss zusätzlich mit der Arduino-IDE oder PlatformIO auf den angeschlossenen Arduino geladen werden. Ohne den aktuellen Sketch funktionieren parallele Pumpenlaufzeiten und Sofortabbruch nicht korrekt.
+Der Pumpencontroller ist ein eigenes Ziel: `main/arduino_main.cpp` und `main/pump_controller.cpp` müssen zusätzlich mit der Arduino-IDE oder PlatformIO auf den angeschlossenen Arduino geladen werden. Nach jedem ESP32-Reset fordert der ESP32 den LED-Test beim Arduino an: D2 bis D5 nacheinander je eine Sekunde, danach alle vier gemeinsam eine Sekunde. Der Arduino quittiert den Testbefehl erst nach Ende der Sequenz; anschließend verarbeitet er normale UART-Befehle.
+
+Die Durchflusskalibrierung liegt separat in `main/pump_controller.cpp`. `PUMP_MILLISECONDS_PER_ML` enthält einen Wert pro Pumpe; die aktuellen 450 ms/ml sind nur der bisherige Projekt-Basiswert und müssen nach Messung für jede Pumpe angepasst werden. Zum Kalibrieren die jeweilige Pumpe eine bekannte Zeit laufen lassen und das Volumen messen; ms/ml ergibt sich aus Laufzeit in Millisekunden geteilt durch geförderte ml.
 
 ## Bedienung
 
@@ -39,10 +41,10 @@ Der Pumpencontroller ist ein eigenes Ziel: `main/arduino_main.cpp` muss zusätzl
 Ein Pumpenbefehl besteht aus fünf Bytes:
 
 ```text
-0xAA  PUMP_ID  DURATION_HI  DURATION_LO  0x55
+0xAA  PUMP_ID  AMOUNT_ML_HI  AMOUNT_ML_LO  0x55
 ```
 
-Die Laufzeit ist eine 16-Bit-Zahl in Millisekunden. Mehrere Startbefehle werden direkt hintereinander übertragen; der Arduino verwaltet für jede Pumpe eine eigene Abschaltzeit. Ein Befehl mit Dauer `0` schaltet die betreffende Pumpe sofort aus. Beim Abbruch werden solche AUS-Befehle für alle vier Pumpen gesendet.
+Die angeforderte Menge ist eine 16-Bit-Zahl in Millilitern. Der Arduino wandelt sie mit dem individuellen ms/ml-Wert der Pumpe in eine Laufzeit um und verwaltet für jede Pumpe eine eigene Abschaltzeit. Mehrere Startbefehle werden direkt hintereinander übertragen und die Pumpen laufen parallel. Eine Menge `0` schaltet die betreffende Pumpe sofort aus. Beim Abbruch werden solche AUS-Befehle für alle vier Pumpen gesendet. Pumpen-ID `0xFE` mit Menge `0` startet stattdessen den LED-Selbsttest; dessen ACK kommt erst nach der vollständigen Sequenz.
 
 ## HTTP-API
 

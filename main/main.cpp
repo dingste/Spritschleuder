@@ -37,12 +37,16 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(WifiManager::getInstance().init());
     
     // Arduino Kommunikation starten
-    ArduinoComm::getInstance().init();
+    const bool arduino_test_passed = ArduinoComm::getInstance().init();
     ButtonManager::getInstance().init();
     
     // HTTP/WebSocket Server starten
     CocktailServer::getInstance().start();
-    DisplayManager::getInstance().showReady();
-    
-    ESP_LOGI(TAG, "CocktailBot bereit!");
+    if (arduino_test_passed) {
+        DisplayManager::getInstance().showReady();
+        ESP_LOGI(TAG, "CocktailBot bereit; Arduino-Pumpentest bestaetigt");
+    } else {
+        DisplayManager::getInstance().showError("ARDUINO UART FEHLER");
+        ESP_LOGE(TAG, "Webserver bereit, Arduino-Pumpentest nicht bestaetigt");
+    }
 }
