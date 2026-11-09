@@ -42,7 +42,10 @@ extern "C" void app_main(void)
     
     // HTTP/WebSocket Server starten
     CocktailServer::getInstance().start();
-    if (arduino_test_passed) {
+    if (!WifiManager::getInstance().isConfigured()) {
+        DisplayManager::getInstance().showInfo();
+        ESP_LOGI(TAG, "Setup-Ansicht bereit; WLAN-QR-Code wird angezeigt");
+    } else if (arduino_test_passed) {
         DisplayManager::getInstance().showReady();
         ESP_LOGI(TAG, "CocktailBot bereit; Arduino-Pumpentest bestaetigt");
     } else {

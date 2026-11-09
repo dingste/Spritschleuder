@@ -1,5 +1,6 @@
 #include "wifi_manager.h"
 #include "config.h"
+#include "display_manager.h"
 #include <cstring>
 #include "esp_check.h"
 #include "esp_event.h"
@@ -53,16 +54,46 @@ void WifiManager::eventHandler(void *arg, esp_event_base_t base, int32_t id, voi
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) esp_wifi_connect();
     else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         self->connected = false;
-        if (self->retry_count++ < WIFI_MAXIMUM_RETRY) esp_wifi_connect();
-        else ESP_LOGE(TAG, "WLAN-Verbindung fehlgeschlagen");
+        if (!self->configured.load()) return;
+        if (self->retry_count++ < WIFI_MAXIMUM_RETRY) {
+            esp_wifi_connect();
+        } else {
+            self->resetToSetupMode();
+        }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         auto *e = static_cast<ip_event_got_ip_t *>(data); self->connected = true; self->retry_count = 0;
         ESP_LOGI(TAG, "Bereit unter http://" IPSTR, IP2STR(&e->ip_info.ip));
     }
 }
 
+void WifiManager::resetToSetupMode() {
+    const std::string failed_ssid = ssid;
+    ESP_LOGE(TAG, "WLAN '%s' nach %d Versuchen nicht erreichbar; setze Konfiguration zurück",
+             failed_ssid.c_str(), WIFI_MAXIMUM_RETRY + 1);
+
+    esp_err_t err = esp_wifi_stop();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WLAN-Station konnte nicht gestoppt werden: %s", esp_err_to_name(err));
+        return;
+    }
+
+    err = clearCredentials();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WLAN-Zugangsdaten konnten nicht gelöscht werden: %s", esp_err_to_name(err));
+    }
+
+    ssid.clear();
+    password.clear();
+    connected = false;
+    configured = false;
+    retry_count = 0;
+
+    startAccessPoint();
+    DisplayManager::getInstance().showInfo();
+}
+
 std::string WifiManager::ipAddress() const {
-    esp_netif_ip_info_t info = {}; auto *n = esp_netif_get_handle_from_ifkey(configured ? "WIFI_STA_DEF" : "WIFI_AP_DEF");
+    esp_netif_ip_info_t info = {}; auto *n = esp_netif_get_handle_from_ifkey(configured.load() ? "WIFI_STA_DEF" : "WIFI_AP_DEF");
     if (!n || esp_netif_get_ip_info(n, &info) != ESP_OK) return "0.0.0.0";
     char out[16]; esp_ip4addr_ntoa(&info.ip, out, sizeof(out)); return out;
 }

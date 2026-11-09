@@ -21,6 +21,7 @@ Die Durchflusskalibrierung liegt separat in `main/pump_controller.cpp`. `PUMP_MI
 ## Bedienung
 
 - Ohne gespeichertes WLAN startet das Gerät den Access Point `Spritschleuder-Setup` mit Passwort `cocktail`. Die Weboberfläche ist dann unter `http://192.168.4.1` erreichbar.
+- Wenn das gespeicherte WLAN nach acht Wiederholungen nicht erreichbar ist, werden die Zugangsdaten gelöscht, der Setup-Access-Point gestartet und die Infoansicht mit QR-Code automatisch angezeigt.
 - K1 (GPIO 8) stoppt alle Pumpen unmittelbar. Nach ungefähr drei Sekunden kehrt das Display selbstständig zur Hauptansicht zurück; es wird nicht auf ein Arduino-ACK gewartet.
 - K2 (GPIO 10) schaltet zwischen Haupt- und Infoansicht um. Die Infoansicht zeigt IP-Adresse und QR-Code zur Geräte-URL.
 - Neue Mixturen werden in der Weboberfläche als relative ml-Anteile je Pumpe angelegt und dauerhaft im NVS gespeichert. Maximal sind 20 Mixturen vorgesehen.
