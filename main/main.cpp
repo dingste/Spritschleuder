@@ -42,9 +42,12 @@ extern "C" void app_main(void)
     const bool arduino_test_passed = ArduinoComm::getInstance().init();
     ButtonManager::getInstance().init();
     
-    // HTTP/WebSocket Server starten
-    CocktailServer::getInstance().start();
-    if (!WifiManager::getInstance().isConfigured()) {
+    // HTTP-Webserver starten
+    const esp_err_t web_result = CocktailServer::getInstance().start();
+    if (web_result != ESP_OK) {
+        DisplayManager::getInstance().showError("HTTP FEHLER");
+        ESP_LOGE(TAG, "HTTP-Server konnte nicht starten: %s", esp_err_to_name(web_result));
+    } else if (!WifiManager::getInstance().isConfigured()) {
         DisplayManager::getInstance().showInfo();
         ESP_LOGI(TAG, "Setup-Ansicht bereit; WLAN-QR-Code wird angezeigt");
     } else if (arduino_test_passed) {

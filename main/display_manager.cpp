@@ -120,7 +120,9 @@ void DisplayManager::render() {
     }
     else if (current == State::Info) {
         text(49, 6, "INFO", BLACK);
-        std::string ip = WifiManager::getInstance().ipAddress(), url = "http://" + ip;
+        auto &wifi = WifiManager::getInstance();
+        std::string ip = wifi.ipAddress();
+        std::string url = wifi.isConfigured() ? "http://spritschleuder.local" : "http://192.168.4.1";
         struct QrContext { DisplayManager *display; } context{this};
         esp_qrcode_config_t cfg = ESP_QRCODE_CONFIG_DEFAULT();
         cfg.max_qrcode_version = 3; cfg.qrcode_ecc_level = ESP_QRCODE_ECC_LOW; cfg.user_data = &context;

@@ -1,6 +1,7 @@
 # ESP-IDF build output and downloaded managed components
 /build/
 /managed_components/
+/private-setup/
 
 # Machine-local configuration; reproducible defaults stay versioned
 /sdkconfig

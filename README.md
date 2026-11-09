@@ -9,10 +9,16 @@ Voraussetzung ist eine eingerichtete ESP-IDF-Umgebung (aktuell getestet mit ESP-
 ```sh
 . /opt/esp-idf/export.sh
 idf.py build
-idf.py -p /dev/ttyUSB0 flash monitor
+idf.py -p /dev/ttyACM0 flash monitor
 ```
 
-Beim ersten Build lädt der ESP-IDF Component Manager die offizielle Komponente `espressif/qrcode`. Die erzeugte ESP32-C3-Firmware liegt anschließend unter `build/cocktailbot.bin`.
+Beim ersten Build lädt der ESP-IDF Component Manager die offiziellen Komponenten `espressif/qrcode` und `espressif/mdns`. Die erzeugte ESP32-C3-Firmware liegt anschließend unter `build/cocktailbot.bin`.
+
+Der Schaltplan nennt einen Winbond W25Q128. Dieser Baustein hat 128 Mbit beziehungsweise 16 MiB Flash. Die Partitionstabelle lässt NVS und PHY an ihren bisherigen Adressen, vergrößert die App-Partition auf 2 MiB und weist den restlichen Speicher ab `0x210000` (knapp 14 MiB) SPIFFS zu. Die erste NVS-Partition bleibt bei `0x9000` und 24 KiB, damit WLAN und Mixturen erhalten bleiben. Vor dem ersten Flashen der neuen Partitionstabelle die reale Flash-ID des Boards mit `esptool.py -p /dev/ttyACM0 flash_id` gegenprüfen. Beim Umstellen nicht `erase-flash` verwenden.
+
+Die Weboberfläche wird als SPIFFS-Datei gebaut und im lokalen Netz unverschlüsselt per HTTP bereitgestellt. Die Firmware ist unter `http://spritschleuder.local` erreichbar; im Setup-Access-Point auch unter `http://192.168.4.1`.
+
+Das SPIFFS-Abbild wird bei jedem Build als `build/webdata.bin` aktualisiert, aber absichtlich nicht bei jedem normalen Firmware-Flash geschrieben. Beim erstmaligen Einrichten der geänderten Partitionstabelle müssen Partitionstabelle und Firmware geflasht sowie das SPIFFS-Abbild einmalig ab `0x210000` geschrieben werden, zum Beispiel mit `esptool.py --chip esp32c3 --port /dev/ttyACM0 write_flash 0x210000 build/webdata.bin`. Ein späteres Aktualisieren der Weboberfläche erfordert nur das erneute Schreiben dieses Abbilds; dabei gehen Bilder in diesem Dateisystem verloren, daher vorher sichern.
 
 Der Pumpencontroller ist ein eigenes Ziel: `main/arduino_main.cpp` und `main/pump_controller.cpp` müssen zusätzlich mit der Arduino-IDE oder PlatformIO auf den angeschlossenen Arduino geladen werden. Nach jedem ESP32-Reset fordert der ESP32 den LED-Test beim Arduino an: D2 bis D5 nacheinander je eine Sekunde, danach alle vier gemeinsam eine Sekunde. Der Arduino quittiert den Testbefehl erst nach Ende der Sequenz; anschließend verarbeitet er normale UART-Befehle.
 
@@ -21,6 +27,7 @@ Die globale Durchflusskalibrierung wird in den Einstellungen der Weboberfläche 
 ## Bedienung
 
 - Ohne gespeichertes WLAN startet das Gerät den Access Point `Spritschleuder-Setup` mit Passwort `cocktail`. Die Weboberfläche ist dann unter `http://192.168.4.1` erreichbar.
+- Im Heim-WLAN lautet die Geräteadresse `http://spritschleuder.local` (mDNS).
 - Wenn das gespeicherte WLAN nach acht Wiederholungen nicht erreichbar ist, werden die Zugangsdaten gelöscht, der Setup-Access-Point gestartet und die Infoansicht mit QR-Code automatisch angezeigt.
 - K1 (GPIO 8) stoppt alle Pumpen unmittelbar. Nach ungefähr drei Sekunden kehrt das Display selbstständig zur Hauptansicht zurück; es wird nicht auf ein Arduino-ACK gewartet.
 - K2 (GPIO 10) schaltet zwischen Haupt- und Infoansicht um. Die Infoansicht zeigt IP-Adresse und QR-Code zur Geräte-URL.
@@ -35,7 +42,10 @@ Vor dem Flashen des Arduino die UART-Leitungen zwischen ESP32 und Arduino trenne
 ## Aufbau
 
 - `main/main.cpp`: Initialisierung und Startreihenfolge
-- `main/cocktail_server.cpp`: eingebettete Weboberfläche und HTTP-API
+- `main/cocktail_server.cpp`: HTTP-Server und HTTP-API
+- `data/www/index.html`: Weboberfläche in SPIFFS
+- `main/local_discovery.cpp`: mDNS-Gerätename `spritschleuder.local`
+- `partitions.csv`: 2-MiB-App und SPIFFS bis zum Ende des 16-MiB-Flashs
 - `main/recipes.cpp`: Rezeptverwaltung und NVS-Persistenz
 - `main/flow_calibration.cpp`: globaler Durchflussfaktor und NVS-Persistenz
 - `main/arduino_comm.cpp`: UART-Protokoll, Befehlswarteschlange und Abbruch

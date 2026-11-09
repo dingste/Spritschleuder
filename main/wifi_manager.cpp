@@ -24,7 +24,10 @@ bool WifiManager::loadCredentials() {
 
 esp_err_t WifiManager::init() {
     ESP_ERROR_CHECK(esp_netif_init()); ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_ap(); esp_netif_create_default_wifi_sta();
+    auto *ap_netif = esp_netif_create_default_wifi_ap();
+    auto *sta_netif = esp_netif_create_default_wifi_sta();
+    ESP_ERROR_CHECK(esp_netif_set_hostname(ap_netif, "spritschleuder"));
+    ESP_ERROR_CHECK(esp_netif_set_hostname(sta_netif, "spritschleuder"));
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT(); ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, eventHandler, this));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, eventHandler, this));
@@ -62,7 +65,7 @@ void WifiManager::eventHandler(void *arg, esp_event_base_t base, int32_t id, voi
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         auto *e = static_cast<ip_event_got_ip_t *>(data); self->connected = true; self->retry_count = 0;
-        ESP_LOGI(TAG, "Bereit unter http://" IPSTR, IP2STR(&e->ip_info.ip));
+        ESP_LOGI(TAG, "Bereit unter http://spritschleuder.local (" IPSTR ")", IP2STR(&e->ip_info.ip));
     }
 }
 
