@@ -14,6 +14,53 @@ idf.py -p /dev/ttyACM0 flash monitor
 
 Beim ersten Build lädt der ESP-IDF Component Manager die offiziellen Komponenten `espressif/qrcode` und `espressif/mdns`. Die erzeugte ESP32-C3-Firmware liegt anschließend unter `build/cocktailbot.bin`.
 
+## Installation und Verdrahtung
+
+Der Aufbau besteht aus dem ESP32-C3, einem separaten Arduino als Pumpencontroller und einem ULN-Treiber für die vier Pumpen. Vor dem Anschließen die Versorgung ausschalten. Arduino, ESP32 und ULN-Treiber benötigen eine gemeinsame Masse (GND). Die Pumpenversorgung muss für die Pumpen und den Treiber geeignet sein; nicht die Pumpen über einen GPIO versorgen.
+
+Die vier bisherigen Pumpenstufen werden nach bisherigem Aufbau über den ULN-Treiber an Arduino D2 bis D5 gesteuert. Die Zuordnung ist Pumpe 1 bis 4 zu D2, D3, D4 und D5. Prüfe vor dem Einschalten, ob das zur tatsächlichen Platinenverdrahtung passt.
+
+Das vieradrige Kabel am ESP32 ist wie folgt belegt. Die Bezeichnungen IO6 und IO7 sind die ESP32-C3-GPIOs; TX1/RX0 bezeichnen die Arduino-Pins laut bisheriger Verdrahtungsnotiz:
+
+| Leitung | ESP32-C3 | Arduino |
+| --- | --- | --- |
+| Rot | 5 V | 5 V |
+| Schwarz | GND | GND |
+| Weiß | IO7 (TX) | TX1 (Arduino RX) |
+| Gelb | IO6 (RX) | RX0 (Arduino TX) |
+
+UART wird gekreuzt angeschlossen: ESP32-TX geht zum Arduino-RX, ESP32-RX zum Arduino-TX. Prüfe anhand der Beschriftung und des Arduino-Modells, dass TX1 und RX0 tatsächlich die verwendeten UART-Pins sind. Beide Geräte müssen dieselbe Logik-GND haben. Die UART-Signale dürfen nur mit passenden Logikpegeln verbunden werden; ein Arduino mit 5-V-TX benötigt gegebenenfalls einen Pegelwandler zum 3,3-V-RX des ESP32-C3.
+
+Die 5-V-Versorgung des ESP32 und Arduino ist mit einer 5-V-Quelle verbunden. Ob der Arduino zusätzlich per USB versorgt wird, ist nicht mehr sicher bekannt; ebenso ist ein zuvor verwendeter Buck/Boost-Wandler nicht bestätigt. Prüfe die reale Versorgung vor dem Einschalten und vermeide, zwei 5-V-Ausgänge (zum Beispiel USB und externe Versorgung) gegeneinander zu schalten. Falls ein Buck/Boost-Wandler verbaut ist, Ausgangsspannung und Polarität vor dem Anschluss messen.
+
+```text
+                         gemeinsame Masse (GND)
+  5-V-Quelle  ───────┬──────────── ESP32-C3 5V
+                     └──────────── Arduino 5V
+  GND         ───────┬──────────── ESP32-C3 GND
+                     ├──────────── Arduino GND
+                     └──────────── ULN-Treiber GND
+
+  ESP32-C3 IO7 / TX  ───────────── Arduino TX1 / RX
+  ESP32-C3 IO6 / RX  ───────────── Arduino RX0 / TX
+
+  Arduino D2 ── ULN-Eingang 1       ULN-Ausgang 1 ── Pumpe 1
+  Arduino D3 ── ULN-Eingang 2       ULN-Ausgang 2 ── Pumpe 2
+  Arduino D4 ── ULN-Eingang 3       ULN-Ausgang 3 ── Pumpe 3
+  Arduino D5 ── ULN-Eingang 4       ULN-Ausgang 4 ── Pumpe 4
+                                            Pumpenversorgung nach Treiberaufbau
+```
+
+Die UART-Pinbelegung muss zu `main/config.h` passen. Pumpe und Treiber müssen für die vorhandene Pumpenspannung dimensioniert sein. Beim ULN-Treiber die Anschlüsse für induktive Lasten/Freilaufbeschaltung gemäß verwendetem Treibermodul und Pumpenversorgung anschließen.
+
+### Firmware aufspielen
+
+1. ESP-IDF einrichten und die ESP32-Firmware bauen. Beim erstmaligen Umstellen auf die geänderte Partitionstabelle zuerst die Hinweise unter [Schnellstart](#schnellstart-für-die-entwicklung) beachten.
+2. ESP32-C3-Firmware und bei der Ersteinrichtung das SPIFFS-Abbild flashen.
+3. Die Arduino-Firmware aus `main/arduino_main.cpp` und `main/pump_controller.cpp` mit Arduino-IDE oder PlatformIO auf den Pumpencontroller laden. Dazu die UART-Leitungen wie im Abschnitt [Arduino flashen](#arduino-flashen) vorübergehend trennen.
+4. UART wieder verbinden, die Versorgung einschalten und den LED-Selbsttest abwarten. D2 bis D5 sollten nacheinander und danach gemeinsam schalten. Zunächst ohne angeschlossene Pumpen prüfen.
+5. Setup-Access-Point `Spritschleuder-Setup` verbinden (Passwort `cocktail`), `http://192.168.4.1` öffnen und WLAN einrichten. Anschließend Durchfluss in den Einstellungen kalibrieren.
+
 Der Schaltplan nennt einen Winbond W25Q128. Dieser Baustein hat 128 Mbit beziehungsweise 16 MiB Flash. Die Partitionstabelle lässt NVS und PHY an ihren bisherigen Adressen, vergrößert die App-Partition auf 2 MiB und weist den restlichen Speicher ab `0x210000` (knapp 14 MiB) SPIFFS zu. Die erste NVS-Partition bleibt bei `0x9000` und 24 KiB, damit WLAN und Mixturen erhalten bleiben. Vor dem ersten Flashen der neuen Partitionstabelle die reale Flash-ID des Boards mit `esptool.py -p /dev/ttyACM0 flash_id` gegenprüfen. Beim Umstellen nicht `erase-flash` verwenden.
 
 Die Weboberfläche wird als SPIFFS-Datei gebaut und im lokalen Netz unverschlüsselt per HTTP bereitgestellt. Die Firmware ist unter `http://spritschleuder.local` erreichbar; im Setup-Access-Point auch unter `http://192.168.4.1`.
