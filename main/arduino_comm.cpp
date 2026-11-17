@@ -25,7 +25,7 @@ bool ArduinoComm::init() {
     uart_set_pin(UART_PORT_NUM, UART_TX_PIN, UART_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 
     // Ask the Arduino to run its LED sequence. It acknowledges only after the
-    // four individual outputs and the simultaneous run have completed.
+    // five individual outputs and the simultaneous run have completed.
     uart_flush_input(UART_PORT_NUM);
     const uint8_t test_command[5] = {0xAA, 0xFE, 0, 0, 0x55};
     uint8_t ack[3] = {};
@@ -90,7 +90,7 @@ void ArduinoComm::abort() {
     }
     // Dauer 0 ist ein sofortiges AUS und funktioniert fuer jede Firmware-Version.
     std::lock_guard<std::mutex> lock(uart_mutex);
-    for (uint8_t pump = 0; pump < 4; ++pump) {
+    for (uint8_t pump = 0; pump < 5; ++pump) {
         const uint8_t frame[5] = {0xAA, pump, 0, 0, 0x55};
         uart_write_bytes(UART_PORT_NUM, frame, sizeof(frame));
     }

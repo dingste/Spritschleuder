@@ -1,6 +1,6 @@
 # Spritschleuder 2
 
-Cocktailautomat mit ESP32-C3, 128×128-ST7735-Display, Weboberfläche und einem separaten Arduino für vier Pumpen.
+Cocktailautomat mit ESP32-C3, 128×128-ST7735-Display, Weboberfläche und einem separaten ATmega328P-Arduino für fünf Pumpen.
 
 ## Schnellstart für die Entwicklung
 
@@ -16,9 +16,9 @@ Beim ersten Build lädt der ESP-IDF Component Manager die offiziellen Komponente
 
 ## Installation und Verdrahtung
 
-Der Aufbau besteht aus dem ESP32-C3, einem separaten Arduino als Pumpencontroller und einem ULN-Treiber für die vier Pumpen. Vor dem Anschließen die Versorgung ausschalten. Arduino, ESP32 und ULN-Treiber benötigen eine gemeinsame Masse (GND). Die Pumpenversorgung muss für die Pumpen und den Treiber geeignet sein; nicht die Pumpen über einen GPIO versorgen.
+Der Aufbau besteht aus dem ESP32-C3, einem ATmega328P-Arduino als Pumpencontroller und einem ULN-Treiber für fünf Pumpen. Vor dem Anschließen die Versorgung ausschalten. Arduino, ESP32 und ULN-Treiber benötigen eine gemeinsame Masse (GND). Die Pumpenversorgung muss für die Pumpen und den Treiber geeignet sein; nicht die Pumpen über einen GPIO versorgen.
 
-Die vier bisherigen Pumpenstufen werden nach bisherigem Aufbau über den ULN-Treiber an Arduino D2 bis D5 gesteuert. Die Zuordnung ist Pumpe 1 bis 4 zu D2, D3, D4 und D5. Prüfe vor dem Einschalten, ob das zur tatsächlichen Platinenverdrahtung passt.
+Der ULN2803 ist ab Arduino-Pin D2 aufwärts angeschlossen. Die fünf Pumpen belegen D2 bis D6: Pumpe 1 an D2, Pumpe 2 an D3, Pumpe 3 an D4, Pumpe 4 an D5 und Pumpe 5 an D6. Die Pumpen hängen an den entsprechenden ULN2803-Ausgängen; nicht direkt an den Arduino-GPIOs.
 
 Das vieradrige Kabel am ESP32 ist wie folgt belegt. Die Bezeichnungen IO6 und IO7 sind die ESP32-C3-GPIOs; TX1/RX0 bezeichnen die Arduino-Pins laut bisheriger Verdrahtungsnotiz:
 
@@ -48,6 +48,7 @@ Die 5-V-Versorgung des ESP32 und Arduino ist mit einer 5-V-Quelle verbunden. Ob 
   Arduino D3 ── ULN-Eingang 2       ULN-Ausgang 2 ── Pumpe 2
   Arduino D4 ── ULN-Eingang 3       ULN-Ausgang 3 ── Pumpe 3
   Arduino D5 ── ULN-Eingang 4       ULN-Ausgang 4 ── Pumpe 4
+  Arduino D6 ── ULN-Eingang 5       ULN-Ausgang 5 ── Pumpe 5
                                             Pumpenversorgung nach Treiberaufbau
 ```
 
@@ -58,7 +59,7 @@ Die UART-Pinbelegung muss zu `main/config.h` passen. Pumpe und Treiber müssen f
 1. ESP-IDF einrichten und die ESP32-Firmware bauen. Beim erstmaligen Umstellen auf die geänderte Partitionstabelle zuerst die Hinweise unter [Schnellstart](#schnellstart-für-die-entwicklung) beachten.
 2. ESP32-C3-Firmware und bei der Ersteinrichtung das SPIFFS-Abbild flashen.
 3. Die Arduino-Firmware aus `main/arduino_main.cpp` und `main/pump_controller.cpp` mit Arduino-IDE oder PlatformIO auf den Pumpencontroller laden. Dazu die UART-Leitungen wie im Abschnitt [Arduino flashen](#arduino-flashen) vorübergehend trennen.
-4. UART wieder verbinden, die Versorgung einschalten und den LED-Selbsttest abwarten. D2 bis D5 sollten nacheinander und danach gemeinsam schalten. Zunächst ohne angeschlossene Pumpen prüfen.
+4. UART wieder verbinden, die Versorgung einschalten und den LED-Selbsttest abwarten. D2 bis D6 sollten nacheinander und danach gemeinsam schalten. Zunächst ohne angeschlossene Pumpen prüfen.
 5. Setup-Access-Point `Spritschleuder-Setup` verbinden (Passwort `cocktail`), `http://192.168.4.1` öffnen und WLAN einrichten. Anschließend Durchfluss in den Einstellungen kalibrieren.
 
 Der Schaltplan nennt einen Winbond W25Q128. Dieser Baustein hat 128 Mbit beziehungsweise 16 MiB Flash. Die Partitionstabelle lässt NVS und PHY an ihren bisherigen Adressen, vergrößert die App-Partition auf 2 MiB und weist den restlichen Speicher ab `0x210000` (knapp 14 MiB) SPIFFS zu. Die erste NVS-Partition bleibt bei `0x9000` und 24 KiB, damit WLAN und Mixturen erhalten bleiben. Vor dem ersten Flashen der neuen Partitionstabelle die reale Flash-ID des Boards mit `esptool.py -p /dev/ttyACM0 flash_id` gegenprüfen. Beim Umstellen nicht `erase-flash` verwenden.
@@ -67,7 +68,7 @@ Die Weboberfläche wird als SPIFFS-Datei gebaut und im lokalen Netz unverschlüs
 
 Das SPIFFS-Abbild wird bei jedem Build als `build/webdata.bin` aktualisiert, aber absichtlich nicht bei jedem normalen Firmware-Flash geschrieben. Beim erstmaligen Einrichten der geänderten Partitionstabelle müssen Partitionstabelle und Firmware geflasht sowie das SPIFFS-Abbild einmalig ab `0x210000` geschrieben werden, zum Beispiel mit `esptool.py --chip esp32c3 --port /dev/ttyACM0 write_flash 0x210000 build/webdata.bin`. Ein späteres Aktualisieren der Weboberfläche erfordert nur das erneute Schreiben dieses Abbilds; dabei gehen Bilder in diesem Dateisystem verloren, daher vorher sichern.
 
-Der Pumpencontroller ist ein eigenes Ziel: `main/arduino_main.cpp` und `main/pump_controller.cpp` müssen zusätzlich mit der Arduino-IDE oder PlatformIO auf den angeschlossenen Arduino geladen werden. Nach jedem ESP32-Reset fordert der ESP32 den LED-Test beim Arduino an: D2 bis D5 nacheinander je eine Sekunde, danach alle vier gemeinsam eine Sekunde. Der Arduino quittiert den Testbefehl erst nach Ende der Sequenz; anschließend verarbeitet er normale UART-Befehle.
+Der Pumpencontroller ist ein eigenes Ziel: `main/arduino_main.cpp` und `main/pump_controller.cpp` müssen zusätzlich mit der Arduino-IDE oder PlatformIO auf den angeschlossenen Arduino geladen werden. Nach jedem ESP32-Reset fordert der ESP32 den LED-Test beim Arduino an: D2 bis D6 nacheinander je eine Sekunde, danach alle fünf gemeinsam eine Sekunde. Der Arduino quittiert den Testbefehl erst nach Ende der Sequenz; anschließend verarbeitet er normale UART-Befehle.
 
 Die globale Durchflusskalibrierung wird in den Einstellungen der Weboberfläche als Laufzeit für 2 ml eingestellt und im ESP32-NVS gespeichert. Der ESP32 übermittelt den Faktor beim Start und bei jeder Änderung an den Arduino. Der Startwert von 0,9 Sekunden für 2 ml entspricht der bisherigen Annahme von 450 ms/ml; zur Kalibrierung kann der Betreiber eine bekannte Zeit laufen lassen, das Volumen messen und diesen einen globalen Richtwert anpassen.
 
@@ -78,8 +79,8 @@ Die globale Durchflusskalibrierung wird in den Einstellungen der Weboberfläche 
 - Wenn das gespeicherte WLAN nach acht Wiederholungen nicht erreichbar ist, werden die Zugangsdaten gelöscht, der Setup-Access-Point gestartet und die Infoansicht mit QR-Code automatisch angezeigt.
 - K1 (GPIO 8) stoppt alle Pumpen unmittelbar. Nach ungefähr drei Sekunden kehrt das Display selbstständig zur Hauptansicht zurück; es wird nicht auf ein Arduino-ACK gewartet.
 - K2 (GPIO 10) schaltet zwischen Haupt- und Infoansicht um. Die Infoansicht zeigt IP-Adresse und QR-Code zur Geräte-URL.
-- Neue Mixturen werden in der Weboberfläche als relative ml-Anteile je Pumpe angelegt und dauerhaft im NVS gespeichert. Maximal sind 20 Mixturen vorgesehen.
-- CSV-Mengen sind ebenfalls relative Anteile, keine festen Pumpenlaufzeiten. Beispiel: `Schlabber,40,40,40,40` ergibt bei 200 ml Bestellung 50 ml je Pumpe. Mit dem Standardfaktor von 0,9 Sekunden für 2 ml laufen die Pumpen dann etwa 22,5 Sekunden parallel. Eine lange Laufzeit ist daher nicht automatisch eine UART-Verzögerung.
+- Neue Mixturen lassen sich per CSV-Import (`pump0_ml` bis `pump4_ml`) oder API als relative ml-Anteile je Pumpe anlegen und werden dauerhaft im NVS gespeichert. Maximal sind 20 Mixturen vorgesehen.
+- CSV-Mengen sind ebenfalls relative Anteile, keine festen Pumpenlaufzeiten. Beispiel: `Schlabber,40,40,40,40,40` ergibt bei 200 ml Bestellung 40 ml je Pumpe. Mit dem Standardfaktor von 0,9 Sekunden für 2 ml laufen die Pumpen dann etwa 18 Sekunden parallel. Eine lange Laufzeit ist daher nicht automatisch eine UART-Verzögerung.
 - Die Weboberfläche zeigt Mixturauswahl, Portionsgröße und einen geschätzten Mischfortschritt. Kalibrierung und WLAN-Konfiguration liegen unter „Einstellungen“.
 
 ### Arduino flashen
@@ -109,14 +110,14 @@ Ein Pumpenbefehl besteht aus fünf Bytes:
 0xAA  PUMP_ID  AMOUNT_ML_HI  AMOUNT_ML_LO  0x55
 ```
 
-Die angeforderte Menge ist eine 16-Bit-Zahl in Millilitern. Der Arduino multipliziert sie mit dem globalen ms/ml-Wert und verwaltet je Pumpe eine eigene Abschaltzeit. Mehrere Startbefehle werden direkt hintereinander übertragen und die Pumpen laufen parallel. Eine Menge `0` schaltet die betreffende Pumpe sofort aus. Pumpen-ID `0xFD` setzt den globalen Faktor; der Arduino bestätigt die Übernahme. Beim Abbruch werden AUS-Befehle für alle vier Pumpen gesendet. Pumpen-ID `0xFE` mit Menge `0` startet den LED-Selbsttest; dessen ACK kommt erst nach der vollständigen Sequenz.
+Die angeforderte Menge ist eine 16-Bit-Zahl in Millilitern. Der Arduino multipliziert sie mit dem globalen ms/ml-Wert und verwaltet je Pumpe eine eigene Abschaltzeit. Mehrere Startbefehle werden direkt hintereinander übertragen und die Pumpen laufen parallel. Eine Menge `0` schaltet die betreffende Pumpe sofort aus. Pumpen-ID `0xFD` setzt den globalen Faktor; der Arduino bestätigt die Übernahme. Beim Abbruch werden AUS-Befehle für alle fünf Pumpen gesendet. Pumpen-ID `0xFE` mit Menge `0` startet den LED-Selbsttest; dessen ACK kommt erst nach der vollständigen Sequenz.
 
 ## HTTP-API
 
 - `GET /api/status` – WLAN-Status und Mischfortschritt
 - `GET /api/recipes` – Liste aller Mixturen
-- `POST /api/recipes` – Mixtur mit `name` und `pump0_ml` bis `pump3_ml` speichern
-- `GET /api/recipes.csv` – Mixturen als CSV herunterladen (`name,pump0_ml,pump1_ml,pump2_ml,pump3_ml`)
+- `POST /api/recipes` – Mixtur mit `name` und `pump0_ml` bis `pump4_ml` speichern
+- `GET /api/recipes.csv` – Mixturen als CSV herunterladen (`name,pump0_ml,pump1_ml,pump2_ml,pump3_ml,pump4_ml`)
 - `POST /api/recipes/import` – CSV importieren; ersetzt die bestehende Mixturliste nach vollständiger Prüfung
 - `POST /api/order` – Mixtur mit `cocktail_id` und `quantity_ml` starten
 - `POST /api/abort` – laufende Mischung sofort abbrechen

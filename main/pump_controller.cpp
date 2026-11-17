@@ -3,8 +3,8 @@
 namespace PumpController {
 namespace {
 
-// Arduino digital pins D2-D5; connect one LED with a series resistor per pin.
-const uint8_t PUMP_PINS[PUMP_COUNT] = {2, 3, 4, 5};
+// Arduino digital pins D2-D6; connect one LED with a series resistor per pin.
+const uint8_t PUMP_PINS[PUMP_COUNT] = {2, 3, 4, 5, 6};
 // One global estimate, configurable from the ESP32 web settings.
 uint16_t millisecondsPerMl = 450;
 unsigned long pumpStops[PUMP_COUNT] = {};

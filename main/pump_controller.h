@@ -4,7 +4,7 @@
 
 namespace PumpController {
 
-constexpr uint8_t PUMP_COUNT = 4;
+constexpr uint8_t PUMP_COUNT = 5;
 constexpr uint8_t CALIBRATION_COMMAND_ID = 0xFD;
 constexpr uint8_t SELF_TEST_COMMAND_ID = 0xFE;
 

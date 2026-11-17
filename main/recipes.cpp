@@ -4,7 +4,8 @@
 #include <cstring>
 
 namespace {
-struct StoredRecipe { char name[25]; uint16_t amount_ml[4]; };
+struct StoredRecipe { char name[25]; uint16_t amount_ml[5]; };
+struct LegacyStoredRecipe { char name[25]; uint16_t amount_ml[4]; };
 const Recipe defaults[] = {
     {"Mojito", {{{0, 50}, {1, 20}, {2, 80}, {3, 10}}}, 4},
     {"Cuba Libre", {{{0, 50}, {1, 10}, {2, 100}, {0, 0}}}, 3},
@@ -16,8 +17,19 @@ esp_err_t RecipeStore::init() {
     std::lock_guard<std::mutex> lock(mutex); nvs_handle_t nvs;
     if (nvs_open("recipes", NVS_READONLY, &nvs) == ESP_OK) {
         size_t size = 0;
-        if (nvs_get_blob(nvs, "items", nullptr, &size) == ESP_OK && size && size % sizeof(StoredRecipe) == 0) {
+        uint8_t schema = 0;
+        const bool current_schema = nvs_get_u8(nvs, "schema", &schema) == ESP_OK && schema >= 2;
+        if (current_schema && nvs_get_blob(nvs, "items", nullptr, &size) == ESP_OK && size && size % sizeof(StoredRecipe) == 0) {
             std::vector<StoredRecipe> stored(size / sizeof(StoredRecipe));
+            if (stored.size() <= MAX_COCKTAILS && nvs_get_blob(nvs, "items", stored.data(), &size) == ESP_OK) {
+                for (const auto &item : stored) {
+                    Recipe recipe; recipe.name.assign(item.name, strnlen(item.name, sizeof(item.name)));
+                    for (uint8_t pump = 0; pump < 5; ++pump) if (item.amount_ml[pump]) recipe.ingredients[recipe.num_ingredients++] = {pump, item.amount_ml[pump]};
+                    if (!recipe.name.empty() && recipe.num_ingredients) recipes.push_back(recipe);
+                }
+            }
+        } else if (!current_schema && nvs_get_blob(nvs, "items", nullptr, &size) == ESP_OK && size && size % sizeof(LegacyStoredRecipe) == 0) {
+            std::vector<LegacyStoredRecipe> stored(size / sizeof(LegacyStoredRecipe));
             if (stored.size() <= MAX_COCKTAILS && nvs_get_blob(nvs, "items", stored.data(), &size) == ESP_OK) {
                 for (const auto &item : stored) {
                     Recipe recipe; recipe.name.assign(item.name, strnlen(item.name, sizeof(item.name)));
@@ -41,11 +53,11 @@ esp_err_t RecipeStore::add(const Recipe &recipe) {
 esp_err_t RecipeStore::replaceAll(const std::vector<Recipe> &replacement) {
     if (replacement.empty() || replacement.size() > MAX_COCKTAILS) return ESP_ERR_INVALID_ARG;
     for (const auto &recipe : replacement) {
-        if (recipe.name.empty() || recipe.name.size() > 24 || !recipe.num_ingredients || recipe.num_ingredients > 4) {
+        if (recipe.name.empty() || recipe.name.size() > 24 || !recipe.num_ingredients || recipe.num_ingredients > 5) {
             return ESP_ERR_INVALID_ARG;
         }
         for (uint8_t i = 0; i < recipe.num_ingredients; ++i) {
-            if (recipe.ingredients[i].pump_id >= 4 || recipe.ingredients[i].amount_ml == 0) return ESP_ERR_INVALID_ARG;
+            if (recipe.ingredients[i].pump_id >= 5 || recipe.ingredients[i].amount_ml == 0) return ESP_ERR_INVALID_ARG;
         }
     }
     std::lock_guard<std::mutex> lock(mutex);
@@ -59,8 +71,12 @@ esp_err_t RecipeStore::save() {
     std::vector<StoredRecipe> stored(recipes.size());
     for (size_t i = 0; i < recipes.size(); ++i) {
         std::strncpy(stored[i].name, recipes[i].name.c_str(), sizeof(stored[i].name) - 1);
-        for (uint8_t j = 0; j < recipes[i].num_ingredients; ++j) { auto in = recipes[i].ingredients[j]; if (in.pump_id < 4) stored[i].amount_ml[in.pump_id] = in.amount_ml; }
+        for (uint8_t j = 0; j < recipes[i].num_ingredients; ++j) { auto in = recipes[i].ingredients[j]; if (in.pump_id < 5) stored[i].amount_ml[in.pump_id] = in.amount_ml; }
     }
     nvs_handle_t nvs; esp_err_t result = nvs_open("recipes", NVS_READWRITE, &nvs); if (result != ESP_OK) return result;
-    result = nvs_set_blob(nvs, "items", stored.data(), stored.size() * sizeof(StoredRecipe)); if (result == ESP_OK) result = nvs_commit(nvs); nvs_close(nvs); return result;
+    result = nvs_set_blob(nvs, "items", stored.data(), stored.size() * sizeof(StoredRecipe));
+    if (result == ESP_OK) result = nvs_set_u8(nvs, "schema", 2);
+    if (result == ESP_OK) result = nvs_commit(nvs);
+    nvs_close(nvs);
+    return result;
 }

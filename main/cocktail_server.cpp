@@ -238,15 +238,15 @@ esp_err_t CocktailServer::recipesHandler(httpd_req_t *r) {
 }
 esp_err_t CocktailServer::recipesCsvExportHandler(httpd_req_t *r) {
     const auto recipes = RecipeStore::getInstance().all();
-    std::string csv = "name,pump0_ml,pump1_ml,pump2_ml,pump3_ml\r\n";
+    std::string csv = "name,pump0_ml,pump1_ml,pump2_ml,pump3_ml,pump4_ml\r\n";
     for (const auto &recipe : recipes) {
-        uint16_t amounts[4] = {};
+        uint16_t amounts[5] = {};
         for (uint8_t i = 0; i < recipe.num_ingredients; ++i) {
             const auto &ingredient = recipe.ingredients[i];
-            if (ingredient.pump_id < 4) amounts[ingredient.pump_id] = ingredient.amount_ml;
+            if (ingredient.pump_id < 5) amounts[ingredient.pump_id] = ingredient.amount_ml;
         }
         csv += csvEscape(recipe.name);
-        for (uint8_t pump = 0; pump < 4; ++pump) csv += "," + std::to_string(amounts[pump]);
+        for (uint8_t pump = 0; pump < 5; ++pump) csv += "," + std::to_string(amounts[pump]);
         csv += "\r\n";
     }
     httpd_resp_set_type(r, "text/csv; charset=utf-8");
@@ -262,10 +262,10 @@ esp_err_t CocktailServer::recipesCsvImportHandler(httpd_req_t *r) {
     }
     if (body.size() >= 3 && static_cast<uint8_t>(body[0]) == 0xEF &&
         static_cast<uint8_t>(body[1]) == 0xBB && static_cast<uint8_t>(body[2]) == 0xBF) body.erase(0, 3);
-    if (!parseCsv(body, rows) || rows[0].size() != 5 || rows[0][0] != "name" ||
+    if (!parseCsv(body, rows) || rows[0].size() != 6 || rows[0][0] != "name" ||
         rows[0][1] != "pump0_ml" || rows[0][2] != "pump1_ml" ||
-        rows[0][3] != "pump2_ml" || rows[0][4] != "pump3_ml") {
-        jsonReply(r, "{\"error\":\"CSV-Kopfzeile muss name,pump0_ml,pump1_ml,pump2_ml,pump3_ml lauten\"}", "400 Bad Request");
+        rows[0][3] != "pump2_ml" || rows[0][4] != "pump3_ml" || rows[0][5] != "pump4_ml") {
+        jsonReply(r, "{\"error\":\"CSV-Kopfzeile muss name,pump0_ml,pump1_ml,pump2_ml,pump3_ml,pump4_ml lauten\"}", "400 Bad Request");
         return ESP_OK;
     }
     if (rows.size() < 2 || rows.size() - 1 > MAX_COCKTAILS) {
@@ -277,7 +277,7 @@ esp_err_t CocktailServer::recipesCsvImportHandler(httpd_req_t *r) {
     imported.reserve(rows.size() - 1);
     for (size_t row_index = 1; row_index < rows.size(); ++row_index) {
         const auto &row = rows[row_index];
-        if (row.size() != 5 || row[0].empty() || row[0].size() > 24) {
+        if (row.size() != 6 || row[0].empty() || row[0].size() > 24) {
             jsonReply(r, "{\"error\":\"Mixturname oder Spaltenzahl in CSV-Zeile ungueltig\"}", "400 Bad Request");
             return ESP_OK;
         }
@@ -289,7 +289,7 @@ esp_err_t CocktailServer::recipesCsvImportHandler(httpd_req_t *r) {
         }
         Recipe recipe;
         recipe.name = row[0];
-        for (uint8_t pump = 0; pump < 4; ++pump) {
+        for (uint8_t pump = 0; pump < 5; ++pump) {
             int amount = 0;
             if (!parseCsvAmount(row[pump + 1], amount)) {
                 jsonReply(r, "{\"error\":\"Pumpenmenge in CSV muss eine Zahl von 0 bis 1000 sein\"}", "400 Bad Request");
@@ -314,10 +314,10 @@ esp_err_t CocktailServer::recipesCsvImportHandler(httpd_req_t *r) {
     return ESP_OK;
 }
 esp_err_t CocktailServer::addRecipeHandler(httpd_req_t *r) {
-    std::string body, name; int amounts[4] = {};
+    std::string body, name; int amounts[5] = {};
     if (!readBody(r, body) || !jsonString(body, "name", name)) { jsonReply(r, "{\"error\":\"Name fehlt\"}", "400 Bad Request"); return ESP_OK; }
     Recipe recipe; recipe.name = name;
-    for (int pump = 0; pump < 4; ++pump) {
+    for (int pump = 0; pump < 5; ++pump) {
         std::string key = "pump" + std::to_string(pump) + "_ml";
         if (!jsonInt(body, key.c_str(), amounts[pump]) || amounts[pump] < 0 || amounts[pump] > 1000) { jsonReply(r, "{\"error\":\"Pumpenmenge ungueltig\"}", "400 Bad Request"); return ESP_OK; }
         if (amounts[pump]) recipe.ingredients[recipe.num_ingredients++] = {static_cast<uint8_t>(pump), static_cast<uint16_t>(amounts[pump])};

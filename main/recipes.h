@@ -11,7 +11,7 @@
 struct Recipe {
     std::string name;
     struct Ingredient { uint8_t pump_id; uint16_t amount_ml; };
-    std::array<Ingredient, 4> ingredients{};
+    std::array<Ingredient, 5> ingredients{};
     uint8_t num_ingredients = 0;
 };
 
